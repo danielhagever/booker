@@ -43,7 +43,7 @@ export async function allow(req: Request, what: string, perHour: number, budget?
   if (!cache) return true;
   if (budget && !budget.take(2)) return true;
   const ip = req.headers.get("cf-connecting-ip") ?? "unknown";
-  const key = new Request(`https://limits.newcomer/${what}/${ip}/${Math.floor(Date.now() / 3_600_000)}`);
+  const key = new Request(`https://limits.booker/${what}/${ip}/${Math.floor(Date.now() / 3_600_000)}`);
   try {
     const n = Number((await (await cache.match(key))?.text()) ?? 0);
     if (n >= perHour) return false;
