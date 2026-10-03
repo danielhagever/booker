@@ -32,9 +32,11 @@ const words = (s: string) =>
     .split(/\s+/)
     .filter((w) => w && !STOP.has(w))
     .map((w) => SPELLING[w] ?? w);
-// "The Empty Bottle" and "Empty Bottle" are the same name; so are "Snail Mail" and "snail mail", and,
-// compared without spaces, "S. G. Goodman" and "S.G. Goodman".
-export const nameKey = (s: string) => words(s).join("");
+// "The Empty Bottle" and "Empty Bottle" are the same name; so are "Snail Mail" and "snail mail".
+export const nameKey = (s: string) => words(s).join(" ");
+// Without spaces, "S. G. Goodman" is S.G. Goodman; used only when no name is equal with its spaces, since
+// Wild Child and Wildchild are different acts.
+export const squashed = (s: string) => words(s).join("");
 
 function typoDistance(a: string, b: string): number {
   const d = Array.from({ length: a.length + 1 }, (_, i) => Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)));
@@ -122,8 +124,9 @@ function locationOf(e: Entity): { all: Set<string>; city: string[]; aliases: str
   if (city.length) all.add("city"); // "New York City", "Mexico City"
   return { all, city, aliases };
 }
-// Words after a name that say nothing either way: "in", "at", and numbers (a zip code, a street number).
-const filler = (w: string) => w === "in" || w === "at" || /^\d+$/.test(w);
+// Words after a name that say nothing either way: a zip code, and "in" or "at" before the place ("House of
+// Blues in Chicago"; a final "IN" is Indiana). Other numbers can be part of a name (Stage 48, Terminal 5).
+const fillerAt = (rest: string[], i: number) => /^\d{5}(\d{4})?$/.test(rest[i]) || ((rest[i] === "in" || rest[i] === "at") && i < rest.length - 1);
 
 // The rest of the typed words after the candidate's name, if its name opens them (compared without spaces).
 function afterName(typed: string[], name: string[]): string[] | null {
@@ -148,7 +151,7 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
   const typedContent = content(typed);
   const scored = found.map((e, order) => {
     const loc = locationOf(e);
-    const place = (rest: string[]) => rest.filter((w) => !filler(w));
+    const place = (rest: string[]) => rest.filter((_, i) => !fillerAt(rest, i));
     const isLoc = (rest: string[]) => place(rest).every((w) => loc.all.has(w)) && (place(rest).length === 0 || place(rest).some((w) => w !== "city"));
     const inCity = (rest: string[]) => loc.city.length > 0 && (loc.city.every((w) => rest.includes(w)) || loc.aliases.some((w) => rest.includes(w)));
     const raw = words(e.name);
@@ -167,7 +170,13 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
       const bareRest = afterName(typed, bare);
       const typedEnding = bareRest ? bareRest.slice(0, bareRest.length - dropStart(bareRest, (w) => GENERIC.has(w)).length) : [];
       const after = bareRest && dropStart(bareRest, (w) => GENERIC.has(w));
-      if (after && typedEnding.every((w) => ending.includes(w)) && isLoc(after)) tier = Math.min(tier, inCity(after) ? 1 : 3);
+      if (after && (ending.length === 0 || typedEnding.every((w) => ending.includes(w))) && isLoc(after)) tier = Math.min(tier, inCity(after) ? 1 : 3);
+    }
+    // The same words in another order: "Fox Theatre, Tucson" is the Fox Tucson Theatre. A typed "city" must
+    // be in the name here (Rock City isn't The Rock).
+    if (tier === 5) {
+      const said = place(typed);
+      if (raw.length && raw.every((w) => said.includes(w)) && said.every((w) => raw.includes(w) || (w !== "city" && loc.all.has(w)))) tier = inCity(said) ? 0 : 2;
     }
     // Near misses that sit where the typed place says come first.
     const located = typed.some((w) => w !== "city" && loc.all.has(w));
@@ -177,10 +186,11 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
     const music = (e.categories ?? []).some((c) => MUSIC.test(c));
     return { e, tier, closeness, located, music, order };
   });
-  // Best tier first; among near misses the closest name, then the typed place; then music venues; then Qloo's order.
+  // Best tier first; among near misses the one in the typed place, then the closest name; then music
+  // venues; then Qloo's order.
   const ranked = scored
     .filter((x) => x.tier < 5)
-    .sort((a, b) => a.tier - b.tier || (a.tier === 4 ? b.closeness - a.closeness || Number(b.located) - Number(a.located) : 0) || Number(b.music) - Number(a.music) || a.order - b.order);
+    .sort((a, b) => a.tier - b.tier || (a.tier === 4 ? Number(b.located) - Number(a.located) || b.closeness - a.closeness : 0) || Number(b.music) - Number(a.music) || a.order - b.order);
   if (!ranked.length) return null;
   const best = ranked[0].tier;
   const exact = best < 4 ? ranked.filter((x) => x.tier === best).map((x) => x.e) : [];
@@ -192,7 +202,8 @@ const label = (e: Entity) => (e.disambiguation && nameKey(e.disambiguation) !== 
 // Artists: 5 candidates, like the harness.
 export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | null> {
   const found = (await q.search(input, "urn:entity:artist", 5)).filter((e) => e.types.includes("urn:entity:artist") || !e.types.length);
-  const exact = found.filter((e) => nameKey(e.name) === nameKey(input));
+  const spaced = found.filter((e) => nameKey(e.name) === nameKey(input));
+  const exact = spaced.length ? spaced : found.filter((e) => squashed(e.name) === squashed(input));
   const list = found.filter((e) => exact.includes(e) || resembles(input, e.name));
   if (!list.length) return null;
   const pick = exact[0] ?? list[0];

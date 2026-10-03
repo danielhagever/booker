@@ -16,25 +16,29 @@ export const clean = (v: unknown, max = MAX_NAME): string => (typeof v === "stri
 // semicolons or new lines. A name with a comma goes in quotes: "Tyler, the Creator". Splitting never
 // happens on "and": "Simon and Garfunkel" stays one name.
 export function splitNames(text: string): string[] {
-  // Each opening quote has its own closing ones: "...", “...”, „...“ or „...”, «...», and '...' or
-  // ‘...’ when the single quote opens a name and closes it just before a separator (an apostrophe
-  // inside stays, straight or curly: Antone’s).
-  const CLOSE: Record<string, string> = { '"': '"', "“": "”", "„": "“”", "«": "»", "'": "'", "‘": "’" };
-  const single = (ch: string) => ch === "'" || ch === "‘" || ch === "’";
+  return parseNames(text, true) ?? parseNames(text, false) ?? text.split(/[,;\n]/).map((x) => x.replace(/["“”„«»]/g, ""));
+}
+
+// Each opening quote has its own closing ones: "...", “...”, „...“ or „...”, «...», and, when
+// `single`, '...' or ‘...’ that open a name and close it just before a separator (an apostrophe inside
+// stays: Antone’s). A quote left open returns null: a single quote is then read as an apostrophe (‘68),
+// and if a double quote is still open the text is split plainly, so one stray quote can't join the list.
+function parseNames(text: string, single: boolean): string[] | null {
+  const CLOSE: Record<string, string> = { '"': '"', "“": "”", "„": "“”", "«": "»", ...(single ? { "'": "'", "‘": "’" } : {}) };
+  const isSingle = (ch: string) => ch === "'" || ch === "‘" || ch === "’";
   const chars = [...text];
   const sepAt = (i: number) => /^\s*([,;\n]|$)/.test(chars.slice(i).join(""));
   const out: string[] = [];
   let cur = "";
   let closer = "";
   chars.forEach((ch, i) => {
-    if (closer && closer.includes(ch) && (!single(ch) || sepAt(i + 1))) closer = "";
-    else if (!closer && CLOSE[ch] && (!single(ch) || cur.trim() === "")) closer = CLOSE[ch];
+    if (closer && closer.includes(ch) && (!isSingle(ch) || sepAt(i + 1))) closer = "";
+    else if (!closer && CLOSE[ch] && (!isSingle(ch) || cur.trim() === "")) closer = CLOSE[ch];
     else if (!closer && (ch === "," || ch === ";" || ch === "\n")) (out.push(cur), (cur = ""));
     else cur += ch;
   });
   out.push(cur);
-  // A quote that never closes would join everything after it: split that text plainly instead.
-  return closer ? text.split(/[,;\n]/).map((x) => x.replace(/["“”„«»]/g, "").replace(/^\s*['‘]|['’]\s*$/g, "")) : out;
+  return closer ? null : out;
 }
 
 export function names(v: unknown, max: number): { list: Named[]; leftOut: string[] } {

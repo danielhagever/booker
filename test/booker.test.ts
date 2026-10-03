@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { forArtist, forVenue, sizeOf, fromSize, cityOf } from "../src/booker.ts";
-import { resembles, nameKey, isRoom, chooseVenue } from "../src/resolve.ts";
+import { resembles, nameKey, squashed, isRoom, chooseVenue, resolveArtist } from "../src/resolve.ts";
 import { names, cityList } from "../src/input.ts";
 import { Budget } from "../src/limits.ts";
 import { ENV, UUID, artist, memoryKV, mockFetch, venue, type Call } from "./mock.ts";
@@ -230,7 +230,9 @@ test("helpers: resemblance, names without 'the', music rooms, city spelling, lis
   assert.equal(nameKey("Sigur Ros"), nameKey("Sigur Rós"));
   // Initials typed with spaces, the way agents and Wikipedia write them (seen live: "S. G. Goodman" became S N U G).
   for (const [typed, qloo] of [["S. G. Goodman", "S.G. Goodman"], ["J. J. Cale", "J.J. Cale"], ["B. B. King", "B.B. King"], ["Rag'n'Bone Man", "Rag 'n' Bone Man"], ["Keb Mo", "Keb' Mo'"]])
-    assert.equal(nameKey(typed), nameKey(qloo), typed);
+    assert.equal(squashed(typed), squashed(qloo), typed);
+  // ...but only as a fallback: these are different acts (seen live as "several share this name").
+  for (const [a, b] of [["Wild Child", "Wildchild"], ["Iceage", "Ice Age"], ["Hippo Campus", "Hippocampus"], ["Night Moves", "Nightmoves"]]) assert.notEqual(nameKey(a), nameKey(b), a);
   assert.equal(nameKey("The Empty Bottle"), nameKey("Empty Bottle"));
   assert.ok(isRoom({ id: "x", name: "x", types: [], categories: ["Bar", "Live music venue"] }));
   assert.ok(!isRoom({ id: "x", name: "x", types: [], categories: ["Record store"] }));
@@ -242,6 +244,7 @@ test("helpers: resemblance, names without 'the', music rooms, city spelling, lis
   assert.deepEqual(names('"Tyler, the Creator, Wednesday', 8).list.map((n) => n.name), ["Tyler", "the Creator", "Wednesday"], "an unclosed quote doesn't swallow the list");
   assert.deepEqual(names("'Tyler, the Creator', \u201eBlack Country, New Road\u201d, 'Guns N' Roses', Antone's", 8).list.map((n) => n.name), ["Tyler, the Creator", "Black Country, New Road", "Guns N' Roses", "Antone's"]);
   assert.deepEqual(names("\u2018Tyler, the Creator\u2019, Antone\u2019s, Wednesday", 8).list.map((n) => n.name), ["Tyler, the Creator", "Antone\u2019s", "Wednesday"]);
+  assert.deepEqual(names("\u201868, \u201cTyler, the Creator\u201d, Earl Sweatshirt", 8).list.map((n) => n.name), ["\u201868", "Tyler, the Creator", "Earl Sweatshirt"], "a leading apostrophe isn't a quote");
   assert.deepEqual(names([{ name: "Twins", id: "not-an-id" }], 8).list, [{ name: "Twins" }]);
   assert.deepEqual(cityList("Austin, Texas\nChicago, Illinois; Austin, Texas").list, ["Austin, Texas", "Chicago, Illinois"]);
 });
@@ -394,4 +397,23 @@ test("venues: the words that name the room decide, not the city, a kind of room,
   assert.equal(pick("Bluebird Theatre", [place("The Bluebird Cafe", "Nashville", "Tennessee", ["Cafe"]), place("Bluebird Theater", "Denver", "Colorado")]), "Bluebird Theater");
   assert.equal(pick("Red Rocks Amphitheater", [place("Red Rocks Bar", "Denver", "Colorado", ["Bar"]), place("Red Rocks Amphitheatre", "Morrison", "Colorado", ["Amphitheater"])]), "Red Rocks Amphitheatre");
   assert.equal(pick("Lincoln Hall", [place("Lincoln Theatre", "Washington", "District of Columbia", ["Performing arts theater"])]), "Lincoln Theatre (closest)", "another kind of room isn't an exact name");
+  // Tenth pass: the typed city before a same-named room elsewhere; words in another order; numbers in names; Indiana.
+  const fox = [place("Fox Theatre", "Atlanta", "Georgia"), place("The Fox Theatre", "Boulder", "Colorado"), place("Fox Tucson Theatre", "Tucson", "Arizona"), place("Visalia Fox Theatre", "Visalia", "California")];
+  assert.equal(pick("Fox Theatre, Tucson", fox), "Fox Tucson Theatre");
+  assert.equal(chooseVenue("Fox Theatre, Oakland", [place("Fox Theatre", "Atlanta", "Georgia"), place("Fox Oakland Theatre", "Oakland", "California")])!.pick.city, "Oakland");
+  assert.equal(pick("Nublu 151, New York", [place("Nublu", "New York", "New York"), place("Nublu 151", "New York", "New York")]), "Nublu 151");
+  assert.equal(pick("Stage 48", [place("The Stage", "Nashville", "Tennessee", ["Bar"]), place("Stage 48", "New York", "New York")]), "Stage 48");
+  assert.equal(pick("Terminal 5", [place("Terminal", "Montreal", "Quebec", ["Bar"]), place("Terminal 5", "New York", "New York")]), "Terminal 5");
+  assert.equal(chooseVenue("Bluebird, Bloomington, IN", [place("Bluebird", "Bloomington", "Illinois", ["Bar"]), place("Bluebird", "Bloomington", "Indiana", ["Bar"])])!.pick.region, "Indiana");
+  assert.equal(pick("Mohawk Bar, Austin", mohawk), "Mohawk Austin");
+});
+
+test("artists: an equal name with its spaces wins; without spaces only as a fallback (both seen live)", async () => {
+  const fake = (names: string[]) => ({ search: async () => names.map((name, i) => ({ id: `id${i}`, name, types: ["urn:entity:artist"] })) }) as any;
+  const wild = await resolveArtist(fake(["Wild Child", "Wildchild"]), "Wild Child");
+  assert.equal(`${wild!.entity.name} ${wild!.match}`, "Wild Child exact");
+  const sg = await resolveArtist(fake(["S N U G", "S.G. Goodman"]), "S. G. Goodman");
+  assert.equal(`${sg!.entity.name} ${sg!.match}`, "S.G. Goodman exact");
+  const jj = await resolveArtist(fake(["alt-J", "J.J. Cale"]), "J. J. Cale");
+  assert.equal(`${jj!.entity.name} ${jj!.match}`, "J.J. Cale exact");
 });
