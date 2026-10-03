@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "booker",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "directory": "public", "binding": "ASSETS", "run_worker_first": ["/mcp", "/mcp/*", "/api/*"] },
+  "kv_namespaces": [{ "binding": "CACHE", "id": "cd79de2a65944ad59d684917ee04ba1a" }],
+  "vars": { "QLOO_BASE_URL": "https://hackathon.api.qloo.com" },
+  "observability": { "enabled": true }
+}

@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Booker</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta name="description" content="Taste-matched booking for independent live music venues and the artists who play them, grounded in Qloo's taste graph.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" integrity="sha512-h9FcoyWjHcOcmEVkxOfTLnmZFWIH0iZhZT1H2TbOq55xssQGEJHEaIm+PgoUaZbRvQTNTluNOEfb1ZRy6D3BOw==" crossorigin="anonymous" referrerpolicy="no-referrer">
+<style>
+  :root { --bg:#14110f; --panel:#1d1916; --card:#241f1b; --ink:#f4ede4; --mute:#b3a89c; --line:#3a332d; --accent:#ff6a3d; --accent2:#ffc857; --good:#5fd39a; --warn:#ffc857; --bad:#ff8a7a; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.55 Inter, system-ui, sans-serif; }
+  a { color:var(--accent2); }
+  header { max-width:1180px; margin:0 auto; padding:28px 16px 6px; }
+  .brand { font:800 14px Archivo, Inter, sans-serif; letter-spacing:.2em; text-transform:uppercase; color:var(--accent); }
+  h1 { font:800 clamp(30px,4.4vw,52px)/1.05 Archivo, Inter, sans-serif; margin:10px 0 10px; letter-spacing:-.01em; max-width:900px; }
+  .lede { color:var(--mute); font-size:17px; max-width:760px; margin:0; }
+  main { max-width:1180px; margin:0 auto; padding:18px 16px 60px; }
+  .tabs { display:flex; gap:8px; margin:6px 0 14px; flex-wrap:wrap; }
+  .tab { border:1px solid var(--line); background:transparent; color:var(--mute); border-radius:999px; padding:9px 16px; font:600 14px Inter, sans-serif; cursor:pointer; }
+  .tab[aria-selected="true"] { background:var(--accent); border-color:var(--accent); color:#1a0f0a; }
+  .grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.25fr); gap:20px; align-items:start; }
+  @media (max-width: 960px) { .grid { grid-template-columns:minmax(0,1fr); } }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px; margin-bottom:16px; }
+  label { font-weight:600; font-size:13px; display:block; margin:12px 0 6px; }
+  label:first-child { margin-top:0; }
+  input[type=text], textarea { width:100%; font:inherit; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:11px 13px; color:var(--ink); }
+  textarea { min-height:76px; resize:vertical; }
+  .hint { color:var(--mute); font-size:12.5px; margin-top:5px; }
+  .chips { display:flex; flex-wrap:wrap; gap:7px; margin-top:12px; }
+  .chip { border:1px solid var(--line); background:transparent; border-radius:999px; padding:5px 11px; font:12.5px Inter, sans-serif; cursor:pointer; color:var(--mute); }
+  .chip:hover { border-color:var(--accent); color:var(--ink); }
+  .check { display:flex; gap:8px; align-items:center; margin-top:12px; font-size:13.5px; color:var(--mute); }
+  .go { margin-top:14px; width:100%; background:var(--accent); color:#1a0f0a; border:0; border-radius:12px; padding:13px; font:700 15px Inter, sans-serif; cursor:pointer; }
+  .go:disabled { opacity:.5; cursor:default; }
+  .tab:focus-visible, .chip:focus-visible, .go:focus-visible, select:focus-visible, .redo:focus-visible, .city:focus-visible { outline:3px solid var(--accent2); outline-offset:2px; }
+  .banner { background:#3a2410; border:1px solid #6b4520; color:#ffd9b0; border-radius:12px; padding:10px 12px; font-size:13.5px; margin-bottom:12px; }
+  .steps { list-style:none; padding:0; margin:0; }
+  .steps li { padding:6px 0 6px 26px; position:relative; color:var(--mute); }
+  .steps li::before { content:""; position:absolute; left:4px; top:12px; width:10px; height:10px; border-radius:50%; border:2px solid var(--line); }
+  .steps li.done { color:var(--ink); } .steps li.done::before { background:var(--good); border-color:var(--good); }
+  .steps li.now::before { border-color:var(--accent); animation:pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity:.3; } }
+  h2 { font:800 21px Archivo, Inter, sans-serif; margin:0 0 10px; }
+  h3 { font:700 17px Archivo, Inter, sans-serif; margin:0; }
+  .summary { font:700 21px/1.35 Archivo, Inter, sans-serif; margin:0 0 12px; }
+  .m { color:var(--mute); font-size:12.5px; }
+  .tag { display:inline-block; background:#2f2721; color:var(--accent2); border-radius:999px; padding:1px 8px; font-size:11.5px; margin:2px 4px 0 0; }
+  .act { border:1px solid var(--line); border-radius:12px; padding:11px 13px; margin-bottom:9px; background:var(--card); }
+  .act .top { display:flex; justify-content:space-between; gap:10px; align-items:baseline; }
+  .score { font:700 13px Inter, sans-serif; color:var(--good); white-space:nowrap; }
+  .bar { height:5px; background:#2f2721; border-radius:4px; overflow:hidden; margin:7px 0 6px; }
+  .bar i { display:block; height:100%; background:linear-gradient(90deg, var(--accent), var(--accent2)); }
+  .bill { display:flex; gap:10px; align-items:center; padding:9px 0; border-top:1px dashed var(--line); }
+  .bill:first-of-type { border-top:0; }
+  .bill b { font:700 16px Archivo, Inter, sans-serif; }
+  .pick { display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:5px 0; border-top:1px dashed var(--line); font-size:13.5px; }
+  .pick:first-child { border-top:0; }
+  .badge { font-size:11px; font-weight:600; border-radius:999px; padding:1px 8px; background:#3a2410; color:#ffd9b0; }
+  .v { font-size:11.5px; font-weight:700; border-radius:999px; padding:2px 9px; white-space:nowrap; }
+  .v.fits { background:#163a2a; color:var(--good); } .v.smaller { background:#2b3417; color:#cfe48a; } .v.bigger { background:#3a2f12; color:var(--warn); } .v.off-taste, .v.unscored { background:#3a1a16; color:var(--bad); }
+  .row { display:flex; justify-content:space-between; gap:10px; padding:8px 0; border-top:1px dashed var(--line); font-size:14px; }
+  .row:first-child { border-top:0; }
+  select { font:inherit; font-size:13px; border:1px solid var(--line); border-radius:8px; padding:3px 6px; background:var(--card); color:var(--ink); max-width:100%; }
+  .redo { margin-top:10px; background:var(--accent2); color:#1a0f0a; border:0; border-radius:10px; padding:8px 14px; font:700 13.5px Inter, sans-serif; cursor:pointer; }
+  .redo:disabled { opacity:.45; cursor:default; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  td, th { text-align:left; padding:5px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  code { background:#2f2721; padding:1px 5px; border-radius:5px; font-size:12px; word-break:break-all; color:var(--ink); }
+  .callsWrap { overflow-x:auto; } .calls { min-width:520px; }
+  .calls td:first-child, .calls td:first-child code { white-space:nowrap; word-break:normal; }
+  .city { border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:10px; background:var(--card); cursor:pointer; }
+  .city:hover { border-color:var(--accent); }
+  #map { height:420px; border-radius:16px; border:1px solid var(--line); margin-bottom:16px; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:14px; } @media (max-width: 700px) { .two { grid-template-columns:1fr; } }
+  footer { max-width:1180px; margin:0 auto; padding:0 16px 40px; color:var(--mute); font-size:13px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">Booker</div>
+  <h1>Book the acts your room's crowd already loves.</h1>
+  <p class="lede">For independent venues and the artists who play them. Booker asks Qloo's taste graph who the fans of your best shows also love, sizes it to your room from your own history, scores the pitches in your inbox, and finds the rooms in each city that fit an act.</p>
+</header>
+<main>
+  <div id="banner" class="banner" hidden></div>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tabVenue" aria-selected="true" aria-controls="venueForm">I book a venue</button>
+    <button class="tab" role="tab" id="tabArtist" aria-selected="false" aria-controls="artistForm">I book an artist</button>
+  </div>
+  <div class="grid">
+    <div>
+      <div class="card" id="venueForm" role="tabpanel" aria-labelledby="tabVenue">
+        <label for="venue">Your venue, with its city</label>
+        <input type="text" id="venue" value="The Empty Bottle, Chicago" maxlength="120" autocomplete="off">
+        <label for="acts">Acts that did well in your room</label>
+        <textarea id="acts" maxlength="800">Wednesday, Hovvdy, Horse Jumper of Love, Snail Mail</textarea>
+        <div class="hint">Up to 8, separated by commas. Their fans and their size set the search.</div>
+        <label for="pitches">Pitches in your inbox (optional)</label>
+        <textarea id="pitches" maxlength="800">Dehd, Alex G, Dirt Buyer, Turnpike Troubadours</textarea>
+        <div class="hint">Up to 8. Booker says which fit your crowd and your room.</div>
+        <label class="check"><input type="checkbox" id="rising"> Favor rising acts (Qloo trends)</label>
+        <div class="chips" id="venueChips">
+          <button type="button" class="chip" data-venue="Mohawk, Austin" data-acts="Black Pumas, Shakey Graves, The Black Angels, Parquet Courts" data-pitches="Wet Leg, Khruangbin, Morgan Wallen">Mohawk, Austin</button>
+          <button type="button" class="chip" data-venue="Antone's, Austin" data-acts="Gary Clark Jr., Marcia Ball, Jimmie Vaughan, Charlie Sexton" data-pitches="Christone Kingfish Ingram, Black Pumas, Skrillex">Antone's, Austin</button>
+          <button type="button" class="chip" data-venue="The Bowery Ballroom, New York" data-acts="Big Thief, Fontaines D.C., Snail Mail, Mitski" data-pitches="Wednesday, Beach House, Bad Bunny">Bowery Ballroom, NYC</button>
+        </div>
+        <button class="go" id="goVenue">Find acts for my room</button>
+      </div>
+      <div class="card" id="artistForm" role="tabpanel" aria-labelledby="tabArtist" hidden>
+        <label for="artist">The artist</label>
+        <input type="text" id="artist" value="Wednesday" maxlength="80" autocomplete="off">
+        <label for="cities">Cities on the route, one per line</label>
+        <textarea id="cities" maxlength="400">Chicago, Illinois
+Austin, Texas
+Asheville, North Carolina
+London, United Kingdom</textarea>
+        <div class="hint">Up to 5, each with its state or country.</div>
+        <div class="chips" id="artistChips">
+          <button type="button" class="chip" data-artist="Charley Crockett" data-cities="Austin, Texas&#10;Nashville, Tennessee&#10;Denver, Colorado&#10;Chicago, Illinois">Charley Crockett</button>
+          <button type="button" class="chip" data-artist="Khruangbin" data-cities="Los Angeles, California&#10;Austin, Texas&#10;London, United Kingdom&#10;Berlin, Germany">Khruangbin</button>
+        </div>
+        <button class="go" id="goArtist">Find cities and rooms</button>
+      </div>
+      <div class="card" id="progress" hidden>
+        <h2 id="progressTitle">Working on it</h2>
+        <ul class="steps" id="steps" aria-live="polite"></ul>
+      </div>
+      <div id="side"></div>
+    </div>
+    <div>
+      <div id="map" hidden role="img" aria-label="Map of the rooms that fit"></div>
+      <div id="results" aria-live="polite">
+        <div class="card"><h2>How it works</h2>
+          <p class="m" style="font-size:14px;margin:0">Bookers match acts to a room by <b>style and size</b>. Booker measures both with Qloo: style is what the fans of your best shows also love (Qloo affinity); size is Qloo's popularity of the acts your room already drew. Every number on the result traces to a Qloo call, listed under "How we know".</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+<footer>Booker uses Qloo for taste data and Open-Meteo for city lookup. Qloo describes what groups of fans tend to like; it doesn't know ticket prices, fees, routing or availability. For AI agents: Booker's MCP server is at <code id="mcpUrl"></code> (tools <code>find_acts_for_venue</code> and <code>find_rooms_for_artist</code>).</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" integrity="sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const f2 = (n) => (n === undefined || n === null ? "?" : Number(n).toFixed(2));
+const f3 = (n) => (n === undefined || n === null ? "?" : Number(n).toFixed(3));
+$("mcpUrl").textContent = `${location.origin}/mcp`;
+let map = null, layer = null;
+
+fetch("/api/status").then((r) => r.json()).then((s) => {
+  if (!s.qloo) { $("banner").hidden = false; $("banner").textContent = "Live Qloo access is being set up. Searches will work as soon as the API key is active."; }
+}).catch(() => {});
+
+function tab(which) {
+  const venue = which === "venue";
+  $("tabVenue").setAttribute("aria-selected", String(venue)); $("tabArtist").setAttribute("aria-selected", String(!venue));
+  $("venueForm").hidden = !venue; $("artistForm").hidden = venue;
+}
+$("tabVenue").onclick = () => tab("venue");
+$("tabArtist").onclick = () => tab("artist");
+$("venueChips").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; $("venue").value = c.dataset.venue; $("acts").value = c.dataset.acts; $("pitches").value = c.dataset.pitches; });
+$("artistChips").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; $("artist").value = c.dataset.artist; $("cities").value = c.dataset.cities; });
+
+// Real progress: the steps are the ones the server runs; they turn done when the answer arrives.
+function progress(steps, step, failed = false) {
+  $("progress").hidden = false;
+  $("progressTitle").textContent = failed ? "Stopped" : step >= steps.length ? "Done" : "Working on it";
+  $("steps").innerHTML = steps.map((s, j) => `<li class="${j < step ? "done" : j === step && !failed ? "now" : ""}">${s}</li>`).join("");
+}
+const VENUE_STEPS = ["Finding your venue and your acts in Qloo", "Asking Qloo who your acts' fans also love, at your size, in your city", "Scoring your inbox and pairing bills"];
+const ARTIST_STEPS = ["Finding the artist in Qloo", "Scoring each city and finding the rooms that fit"];
+
+async function post(path, body, steps, render) {
+  document.querySelectorAll(".go").forEach((b) => (b.disabled = true));
+  $("results").innerHTML = ""; $("side").innerHTML = ""; $("map").hidden = true;
+  progress(steps, 1);
+  try {
+    const r = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({ error: "The server's answer couldn't be read. Please try again." }));
+    if (d.error) { progress(steps, 1, true); $("results").innerHTML = `<div class="card"><b>Couldn't finish.</b> ${esc(d.error)}</div>`; return; }
+    progress(steps, steps.length);
+    render(d, body);
+  } catch {
+    progress(steps, 1, true);
+    $("results").innerHTML = `<div class="card">Something went wrong. Please try again.</div>`;
+  } finally { document.querySelectorAll(".go").forEach((b) => (b.disabled = false)); }
+}
+
+$("goVenue").onclick = () => post("/api/venue", { venue: $("venue").value, acts: $("acts").value, pitches: $("pitches").value, rising: $("rising").checked }, VENUE_STEPS, renderVenue);
+$("goArtist").onclick = () => post("/api/artist", { artist: $("artist").value, cities: $("cities").value }, ARTIST_STEPS, renderArtist);
+
+// "Not it?": a name that wasn't one exact match can be swapped for another Qloo candidate, by ID.
+function pickRow(p, key, kind) {
+  const badge = p.match === "closest" ? `<span class="badge">closest match</span>` : p.match === "ambiguous" ? `<span class="badge">several share this name</span>` : p.match === "chosen" ? `<span class="badge">your choice</span>` : "";
+  const choose = (p.match === "closest" || p.match === "ambiguous") && p.alternatives.length
+    ? `<label class="m" for="${key}" style="margin:0">Not it?</label><select id="${key}" data-kind="${kind}" data-input="${esc(p.input)}"><option value="">${esc(p.name)}</option>${p.alternatives.map((a) => `<option value="${esc(a.id)}" data-name="${esc(a.name)}">${esc(a.name)}${a.note ? ` · ${esc(a.note)}` : ""}</option>`).join("")}</select>`
+    : "";
+  return `<div class="pick"><span>${esc(p.input)} → <b>${esc(p.name)}</b></span>${badge}${choose}</div>`;
+}
+
+function howWeKnow(d) {
+  const calls = d.calls.map((c) => `<tr><td><code>${esc(c.path)}</code></td><td>${Object.entries(c.params).map(([k, v]) => `<code>${esc(k)}=${esc(String(v).slice(0, 80))}</code>`).join(" ")}</td><td>${c.status || "no answer"}</td><td>${c.count}</td><td>${c.ms} ms</td></tr>`).join("");
+  return `<div class="card"><h2>How we know</h2>
+    ${d.cached ? `<p class="m" style="margin:0 0 8px">This is a saved result from ${esc(new Date(d.computedAt).toLocaleString())}: identical searches are kept for a day to spare the shared Qloo quota, and the calls below are from that run.</p>` : ""}
+    <ol class="m" style="margin:0 0 10px 18px;padding:0">${d.trace.map((t) => `<li><b>${esc(t.step)}:</b> ${esc(t.detail)}</li>`).join("")}</ol>
+    <div class="callsWrap"><table class="calls"><tr><th>Qloo call</th><th>Parameters (key never leaves the server)</th><th>Status</th><th>Results</th><th>Time</th></tr>${calls}</table></div>
+    <p class="m" style="margin:12px 0 2px"><b>Booker's own rules</b> (not Qloo results):</p>
+    <ul class="m" style="margin:0 0 0 18px;padding:0">${d.ours.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>
+    <p class="m" style="margin:10px 0 2px"><b>Limits</b>:</p>
+    <ul class="m" style="margin:0 0 0 18px;padding:0">${d.limits.map((l) => `<li>${esc(l)}</li>`).join("")}</ul></div>`;
+}
+
+const VERDICT = { fits: "fits your room", smaller: "opener", bigger: "bigger than your room", "off-taste": "off your crowd's taste", unscored: "not scored" };
+
+function actCard(c, max) {
+  return `<div class="act"><div class="top"><h3>${esc(c.name)}</h3><span class="score" title="Qloo affinity with the fans of your acts">${f3(c.affinity)}</span></div>
+    <div class="bar" title="Relative to the best match"><i style="width:${Math.round(((c.affinity ?? 0) / max) * 100)}%"></i></div>
+    <div class="m">${c.closest ? `Closest to your <b style="color:var(--ink)">${esc(c.closest.name)}</b> (${f3(c.closest.affinity)}) · ` : ""}popularity ${f3(c.popularity)}</div>
+    <div>${(c.genres || []).map((g) => `<span class="tag">${esc(g)}</span>`).join("")}</div></div>`;
+}
+
+function renderVenue(d, body) {
+  const max = Math.max(...[...d.fits, ...d.openers].map((c) => c.affinity ?? 0), 0.0001);
+  const picks = [pickRow(d.venue, "altV", "venue"), ...d.acts.map((a, i) => pickRow(a, `altA${i}`, "act"))].join("");
+  const unsure = [d.venue, ...d.acts].some((p) => (p.match === "closest" || p.match === "ambiguous") && p.alternatives.length);
+  $("side").innerHTML = `
+    <div class="card"><h2>Matched in Qloo</h2>
+      <div class="m" style="margin-bottom:6px">${esc(d.venue.name)}${d.venue.address ? ` · ${esc(d.venue.address)}` : ""}${d.qlooCity ? ` · Qloo city: ${esc(d.qlooCity)}` : ""}</div>
+      <div id="picks">${picks}</div>
+      ${d.unresolved.length ? `<div class="m" style="margin-top:6px">Not found: ${esc(d.unresolved.join(", "))}</div>` : ""}
+      ${d.leftOut && d.leftOut.length ? `<div class="m">Not used (up to 8): ${esc(d.leftOut.join(", "))}</div>` : ""}
+      ${unsure ? `<button class="redo" id="redo" disabled>Update with my choices</button>` : ""}
+      ${d.degraded ? `<p class="m" style="margin:10px 0 0">An optional step didn't finish; this result isn't saved. Try again later for a complete one.</p>` : ""}</div>
+    ${d.band ? `<div class="card"><h2>Your room's size</h2><p class="m" style="font-size:14px;margin:0">The acts you named sit between <b style="color:var(--ink)">${f3(d.band.min)}</b> and <b style="color:var(--ink)">${f3(d.band.max)}</b> on Qloo's popularity scale. Acts that fit are looked for around that range; openers below it.</p></div>` : ""}
+    ${d.roomFans.length ? `<div class="card"><h2>What Qloo says your room's visitors like</h2><p class="m" style="margin:0 0 8px">Artists liked by people who like ${esc(d.venue.name)} itself, at your size. Qloo's view of the venue's visitors; it can differ from who buys your tickets.</p>${d.roomFans.map((c) => `<span class="tag" style="font-size:13px">${esc(c.name)}</span>`).join(" ")}</div>` : ""}
+    ${d.rivals.rooms.length ? `<div class="card"><h2>Rooms in town that fit ${esc(d.rivals.act)}</h2>${d.rivals.rooms.map((r, i) => `<div class="row"><span>#${i + 1} ${esc(r.name)}${r.you ? ` <span class="v fits">your room</span>` : ""}</span><span class="score">${f3(r.affinity)}</span></div>`).join("")}<p class="m" style="margin:8px 0 0">Qloo's ranking of live music venues in ${esc(d.city || "the city")} for this act's fans: the rooms that compete for the same show.</p></div>` : ""}`;
+  const inbox = d.inbox.length ? `<div class="card"><h2>Your inbox</h2>${d.inbox.map((p) => `<div class="row"><span><b>${esc(p.name)}</b>${p.input && p.input.toLowerCase() !== p.name.toLowerCase() ? ` <span class="m">(you wrote ${esc(p.input)})</span>` : ""}<br><span class="m">${esc(p.why)}</span></span><span><span class="v ${esc(p.verdict)}">${esc(VERDICT[p.verdict] || p.verdict)}</span></span></div>`).join("")}</div>` : "";
+  $("results").innerHTML = `
+    <div class="card"><p class="summary">${esc(d.summary)}</p><p class="m" style="margin:0">Ranked by Qloo for fans of ${esc(d.acts.map((a) => a.name).join(", "))}${d.city ? `, in ${esc(d.qlooCity || d.city)}` : ""}.</p></div>
+    ${d.bills.length ? `<div class="card"><h2>Bills you could announce</h2>${d.bills.map((b) => `<div class="bill"><b>${esc(b.headliner)}</b><span class="m">with</span><b style="font-weight:600">${esc(b.opener)}</b><span class="score" style="margin-left:auto" title="Qloo affinity of the opener with the headliner's fans">${f3(b.overlap)}</span></div>`).join("")}<p class="m" style="margin:6px 0 0">The number is how much the headliner's fans like the opener (Qloo affinity).</p></div>` : ""}
+    ${inbox}
+    <div class="card"><h2>Acts that fit your crowd and size</h2>${d.fits.length ? d.fits.map((c) => actCard(c, max)).join("") : `<p class="m">Qloo found no acts in your size range.</p>`}</div>
+    ${d.openers.length ? `<div class="card"><h2>Openers and next-up acts</h2><p class="m" style="margin:0 0 8px">Same crowd, smaller than your usual acts: openers, off nights, or the ones to catch early.</p>${d.openers.map((c) => actCard(c, max)).join("")}</div>` : ""}
+    ${howWeKnow(d)}`;
+  wireRedo(d, body);
+}
+
+function wireRedo(d, body) {
+  const redo = $("redo");
+  if (!redo) return;
+  document.querySelectorAll("#picks select").forEach((s) => s.addEventListener("change", () => { redo.disabled = false; }));
+  redo.onclick = () => {
+    const chosen = (input, kind) => { const s = [...document.querySelectorAll(`#picks select[data-kind="${kind}"]`)].find((x) => x.dataset.input === input); return s && s.value ? { name: input, id: s.value } : null; };
+    const venue = chosen(d.venue.input, "venue") || (d.venue.match === "chosen" ? { name: d.venue.input, id: d.venue.id } : { name: d.venue.input });
+    const acts = d.acts.map((a) => chosen(a.input, "act") || (a.match === "chosen" ? { name: a.input, id: a.id } : { name: a.input })).concat(d.unresolved.map((name) => ({ name })));
+    post("/api/venue", { venue, acts, pitches: body.pitches, rising: body.rising }, VENUE_STEPS, renderVenue);
+  };
+}
+
+function renderArtist(d) {
+  const a = d.artist;
+  const maxRoom = Math.max(...d.cities.flatMap((c) => c.rooms.map((r) => r.affinity ?? 0)), 0.0001);
+  $("side").innerHTML = `<div class="card"><h2>Matched in Qloo</h2><div id="picks">${pickRow(a, "altArtist", "artist")}</div>
+    <div class="m" style="margin-top:6px">${(a.genres || []).map((g) => `<span class="tag">${esc(g)}</span>`).join("")} popularity ${f3(a.popularity)}</div>
+    ${d.notFound.length ? `<div class="m" style="margin-top:6px">Not placed: ${esc(d.notFound.join(", "))}</div>` : ""}
+    ${d.leftOut && d.leftOut.length ? `<div class="m">Not used (up to 5): ${esc(d.leftOut.join(", "))}</div>` : ""}
+    ${(a.match === "closest" || a.match === "ambiguous") && a.alternatives.length ? `<button class="redo" id="redoArtist" disabled>Update with my choice</button>` : ""}</div>`;
+  $("results").innerHTML = `
+    <div class="card"><p class="summary">${esc(d.summary)}</p><p class="m" style="margin:0">Cities are ordered by Qloo's affinity for ${esc(a.name)} with the city as the signal; rooms by Qloo's affinity of each venue's visitors with ${esc(a.name)}'s fans.</p></div>
+    ${d.cities.map((c, i) => `<div class="city" tabindex="0" role="button" data-i="${i}" aria-label="Show ${esc(c.label)} on the map">
+      <div class="top" style="display:flex;justify-content:space-between;gap:10px"><h3>#${i + 1} ${esc(c.label)}</h3><span class="score">${c.affinity !== undefined ? f3(c.affinity) : "no city score"}</span></div>
+      ${c.qlooCity ? `<div class="m">Qloo city: ${esc(c.qlooCity)}</div>` : ""}
+      ${c.rooms.length ? c.rooms.map((r) => `<div class="row"><span><b>${esc(r.name)}</b>${r.address ? `<br><span class="m">${esc(r.address)}</span>` : ""}</span><span class="score">${f3(r.affinity)}</span></div>`).join("") : `<p class="m">Qloo returned no live music venues here.</p>`}</div>`).join("")}
+    ${howWeKnow(d)}`;
+  // The map: every room, colored by how well it fits.
+  $("map").hidden = false;
+  if (!map) { map = L.map("map", { scrollWheelZoom: false }); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap contributors" }).addTo(map); layer = L.layerGroup().addTo(map); }
+  layer.clearLayers();
+  const pts = [];
+  d.cities.forEach((c) => c.rooms.forEach((r) => { if (r.lat && r.lon) { pts.push([r.lat, r.lon]); L.circleMarker([r.lat, r.lon], { radius: 4 + 6 * ((r.affinity ?? 0) / maxRoom), color: "#ff6a3d", fillOpacity: 0.85 }).bindTooltip(`${esc(r.name)} (${esc(c.label.split(",")[0])})`).addTo(layer); } }));
+  map.invalidateSize();
+  if (pts.length) map.fitBounds(pts, { padding: [30, 30], maxZoom: 12 });
+  document.querySelectorAll(".city").forEach((el) => {
+    const show = () => { const c = d.cities[+el.dataset.i]; const rp = c.rooms.filter((r) => r.lat && r.lon).map((r) => [r.lat, r.lon]); if (rp.length) map.fitBounds(rp, { padding: [40, 40], maxZoom: 14 }); else map.setView([c.lat, c.lon], 11); $("map").scrollIntoView({ behavior: "smooth", block: "nearest" }); };
+    el.addEventListener("click", show);
+    el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); show(); } });
+  });
+  const redo = $("redoArtist");
+  if (redo) {
+    document.querySelectorAll("#picks select").forEach((s) => s.addEventListener("change", () => { redo.disabled = false; }));
+    redo.onclick = () => { const s = document.querySelector("#picks select"); post("/api/artist", { artist: s && s.value ? { name: a.input, id: s.value } : { name: a.input }, cities: d.cities.map((c) => c.input).concat(d.notFound) }, ARTIST_STEPS, renderArtist); };
+  }
+}
+</script>
+</body>
+</html>
