@@ -310,7 +310,7 @@ export async function forVenue(
     venue: {
       ...pick(venueR),
       ...(v.address ? { address: v.address } : {}),
-      ...(city ? { city } : {}),
+      ...(cityOf(v) ? { city: cityOf(v) } : {}), // where the room is, even if Qloo couldn't use the city as a signal
       ...(v.lat !== undefined && v.lon !== undefined ? { lat: v.lat, lon: v.lon } : {}),
       ...(v.categories?.length ? { categories: v.categories } : {}),
     },

@@ -116,3 +116,7 @@ test("the page labels a saved result, says Stopped on failure, and keeps the key
   assert.match(page, /failed \? "Stopped"/);
   assert.doesNotMatch(page, /QLOO_API_KEY|x-api-key/i);
 });
+
+test("the page says when your room isn't among the rooms that fit the top act", () => {
+  assert.match(page, /isn't in Qloo's top \$\{d\.rivals\.rooms\.length\} for this act/);
+});

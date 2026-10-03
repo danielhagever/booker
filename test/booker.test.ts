@@ -231,3 +231,9 @@ test("helpers: resemblance, names without 'the', music rooms, city spelling, lis
   assert.deepEqual(names([{ name: "Twins", id: "not-an-id" }], 8).list, [{ name: "Twins" }]);
   assert.deepEqual(cityList("Austin, Texas\nChicago, Illinois; Austin, Texas").list, ["Austin, Texas", "Chicago, Illinois"]);
 });
+
+test("the room keeps its city on the page even when Qloo can't use the city as a signal", async () => {
+  const { r } = await run({}, { unknownCity: true });
+  assert.equal(r.city, undefined);
+  assert.equal(r.venue.city, "Chicago, Illinois");
+});
