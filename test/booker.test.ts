@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { forArtist, forVenue, sizeOf, fromSize, cityOf } from "../src/booker.ts";
-import { resembles, nameKey, isRoom } from "../src/resolve.ts";
+import { resembles, nameKey, isRoom, venueResembles } from "../src/resolve.ts";
 import { names, cityList } from "../src/input.ts";
 import { Budget } from "../src/limits.ts";
 import { ENV, UUID, artist, memoryKV, mockFetch, venue, type Call } from "./mock.ts";
@@ -231,7 +231,8 @@ test("helpers: resemblance, names without 'the', music rooms, city spelling, lis
   assert.ok(!isRoom({ id: "x", name: "x", types: [], categories: ["Record store"] }));
   assert.equal(cityOf({ id: "x", name: "x", types: [], city: "Chicago", region: "Illinois", countryCode: "US", country: "United States" }), "Chicago, Illinois");
   assert.equal(cityOf({ id: "x", name: "x", types: [], city: "London", region: "England", countryCode: "GB", country: "United Kingdom" }), "London, United Kingdom");
-  assert.deepEqual(names("Simon and Garfunkel, Hovvdy\nhovvdy; Dehd", 8).list.map((n) => n.name), ["Simon and Garfunkel", "Hovvdy", "Dehd"]);
+  assert.deepEqual(names("Simon and Garfunkel, Hovvdy, hovvdy, Dehd", 8).list.map((n) => n.name), ["Simon and Garfunkel", "Hovvdy", "Dehd"]);
+  assert.deepEqual(names("Tyler, the Creator\nBlack Country, New Road; Wet Leg\n", 8).list.map((n) => n.name), ["Tyler, the Creator", "Black Country, New Road", "Wet Leg"]);
   assert.deepEqual(names([{ name: "Twins", id: "not-an-id" }], 8).list, [{ name: "Twins" }]);
   assert.deepEqual(cityList("Austin, Texas\nChicago, Illinois; Austin, Texas").list, ["Austin, Texas", "Chicago, Illinois"]);
 });
@@ -308,4 +309,17 @@ test("pacing holds when a timer fires late: each call waits for the previous one
 test("sizes near 1 still widen: a 0.9998 act's range reaches past 0.9998", () => {
   assert.ok(fromSize(sizeOf(0.9998) + 0.1) > 0.9998);
   assert.ok(Number.isFinite(sizeOf(1)));
+});
+
+test("a venue typed with its city, no comma: the room's name decides, not the city's words (seen live)", () => {
+  const place = (name: string, city: string, region: string) => ({ id: "x", name, types: [], city, region, country: "United States", countryCode: "US" });
+  const typed = "Bowery Ballroom New York City";
+  assert.ok(venueResembles(typed, place("The Bowery Ballroom", "New York", "New York")));
+  assert.ok(!venueResembles(typed, place("Resorts World New York City", "New York", "New York")));
+  assert.ok(!venueResembles(typed, place("New York City Center", "New York", "New York")));
+  assert.ok(venueResembles("Troubadour Los Angeles", place("The Troubadour", "West Hollywood", "California")));
+  assert.ok(!venueResembles("Troubadour Los Angeles", place("Los Angeles Theatre", "Los Angeles", "California")));
+  assert.ok(venueResembles("Fillmore San Francisco", place("The Fillmore", "San Francisco", "California")));
+  assert.ok(!venueResembles("Fillmore San Francisco", place("San Francisco Symphony", "San Francisco", "California")));
+  assert.ok(venueResembles("Antone's", place("Antone's Nightclub", "Austin", "Texas")) && venueResembles("Mohawk", place("Mohawk Austin", "Austin", "Texas")));
 });

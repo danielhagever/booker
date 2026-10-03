@@ -27,7 +27,7 @@ const failure = (e: unknown) => {
 };
 
 // Bump whenever the pipeline or the result format changes, so no one gets yesterday's logic.
-const CACHE_VERSION = 6;
+const CACHE_VERSION = 7;
 
 async function sha(s: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -112,7 +112,7 @@ export function tourSummary(r: TourResult): string {
 
 // What an agent should tell the person before relying on the answer: every name that was only a closest
 // match or shared by several Qloo entries (venue, acts, pitches, artist), and every name not found.
-function caveats(r: { acts?: VenueResult["acts"]; venue?: VenueResult["venue"]; artist?: TourResult["artist"]; unresolved?: string[]; inbox?: VenueResult["inbox"] }): string {
+function caveats(r: { acts?: VenueResult["acts"]; venue?: VenueResult["venue"]; artist?: TourResult["artist"]; unresolved?: string[]; inbox?: VenueResult["inbox"]; notFound?: string[] }): string {
   const found = (r.inbox ?? []).filter((p) => p.id);
   const picks = [r.venue, ...(r.acts ?? []), r.artist].filter((x): x is NonNullable<typeof x> => !!x).map((p) => ({ p, what: "" }));
   const parts = [...picks, ...found.map((p) => ({ p, what: "Pitch " }))]
@@ -121,6 +121,7 @@ function caveats(r: { acts?: VenueResult["acts"]; venue?: VenueResult["venue"]; 
   if (r.unresolved?.length) parts.push(`Not found in Qloo: ${r.unresolved.join(", ")}.`);
   const lost = (r.inbox ?? []).filter((p) => !p.id).map((p) => p.input);
   if (lost.length) parts.push(`Pitches not found in Qloo: ${lost.join(", ")}.`);
+  if (r.notFound?.length) parts.push(`Cities left out (not found, or Qloo placed them somewhere else): ${r.notFound.join(", ")}.`);
   return parts.join(" ");
 }
 

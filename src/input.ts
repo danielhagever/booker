@@ -12,10 +12,11 @@ export const validId = (id: string) => TAG_OR_ENTITY_ID.test(id);
 
 export const clean = (v: unknown, max = MAX_NAME): string => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 
-// A list of names: an array of strings or {name, id} objects, or one text with commas or new lines.
-// Splitting never happens on "and": "Simon and Garfunkel" stays one name.
+// A list of names: an array of strings or {name, id} objects, or one text. In a text written one per
+// line (or with semicolons), commas stay inside names ("Tyler, the Creator", "Black Country, New Road");
+// on one line, commas separate. Splitting never happens on "and": "Simon and Garfunkel" stays one name.
 export function names(v: unknown, max: number): { list: Named[]; leftOut: string[] } {
-  const raw: unknown[] = typeof v === "string" ? v.split(/[,;\n]+/) : Array.isArray(v) ? v : [];
+  const raw: unknown[] = typeof v === "string" ? v.split(/[;\n]/.test(v.trim()) ? /[;\n]+/ : /,+/) : Array.isArray(v) ? v : [];
   const all: Named[] = [];
   for (const r of raw) {
     const name = clean(typeof r === "string" ? r : (r as any)?.name);

@@ -34,16 +34,29 @@ function typoDistance(a: string, b: string): number {
   return d[a.length][b.length];
 }
 
-// One contains the other as whole words, and the part is at least half of the whole ("Gary Clark" is
-// Gary Clark Jr., but "Nobody Real Band" isn't The Band, and "Bea" isn't Beach House); or at least half
-// the typed words appear in the name, allowing a typo or two.
+// Whole words only ("Bea" isn't Beach House). The typed text is part of the name ("Gary Clark" is Gary
+// Clark Jr.); or the name is part of the typed text and at least half of it ("Nobody Real Band Xyz" isn't
+// The Band); or at least half the typed words appear in the name, allowing a typo or two.
 export function resembles(typed: string, name: string): boolean {
-  const a = words(typed), b = words(name);
+  return wordsResemble(words(typed), words(name), true);
+}
+
+function wordsResemble(a: string[], b: string[], half: boolean): boolean {
   if (!a.length || !b.length) return false;
   const A = ` ${a.join(" ")} `, B = ` ${b.join(" ")} `;
-  if (A === B || (B.includes(A) && a.length * 2 >= b.length) || (A.includes(B) && b.length * 2 >= a.length)) return true;
+  if (B.includes(A) || (A.includes(B) && (!half || b.length * 2 >= a.length))) return true;
   const close = (w: string) => b.some((x) => x === w || typoDistance(w, x) <= (w.length > 5 ? 2 : w.length > 3 ? 1 : 0));
   return a.filter(close).length / a.length >= 0.5;
+}
+
+// A venue is typed with its city ("Bowery Ballroom New York City", "Troubadour Los Angeles"), so the
+// words of the candidate's own city and state don't count on either side, and the room's name may sit
+// inside the typed text. Otherwise the city's words would pick any place named after the city (live:
+// Resorts World New York City for the Bowery Ballroom).
+export function venueResembles(typed: string, e: Entity): boolean {
+  const place = new Set(words([e.city, e.region, e.country].filter(Boolean).join(" ")));
+  const own = (w: string) => !place.has(w);
+  return wordsResemble(words(typed).filter(own), words(e.name).filter(own), false);
 }
 
 const label = (e: Entity) => (e.disambiguation && nameKey(e.disambiguation) !== nameKey(e.name) ? `${e.name} (${e.disambiguation})` : e.name);
@@ -81,7 +94,7 @@ export async function resolveVenue(q: Qloo, input: string): Promise<Resolved | n
   // Among places with the same name, one Qloo files as a music venue comes first (stable otherwise).
   const found = (await q.search(input.replace(/,/g, " "), "urn:entity:place", 8)).filter(isRoom).sort(musicFirst);
   const exact = found.filter((e) => nameKey(e.name) === nameKey(name) || nameKey(e.name).startsWith(nameKey(name) + " "));
-  const list = found.filter((e) => exact.includes(e) || resembles(name, e.name));
+  const list = found.filter((e) => exact.includes(e) || venueResembles(name, e));
   if (!list.length) return null;
   const pick = exact[0] ?? list[0];
   return {
