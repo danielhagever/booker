@@ -60,7 +60,7 @@ async function kvPut(cache: KVNamespace, budget: Budget, key: string, value: unk
 // Typed forms that Open-Meteo doesn't know by that name.
 const ALIASES: Record<string, string> = {
   dc: "Washington, DC", "washington dc": "Washington, DC", cdmx: "Mexico City", "ciudad de mexico": "Mexico City",
-  "quebec city": "Quebec, QC", "tel aviv-yafo": "Tel Aviv", "tel aviv yafo": "Tel Aviv",
+  "quebec city": "Quebec, QC", "tel aviv-yafo": "Tel Aviv", "tel aviv yafo": "Tel Aviv", bangalore: "Bengaluru", bombay: "Mumbai",
 };
 // Newspaper (AP) state abbreviations, dots dropped ("Paris, Tex.", "Springfield, Ill.").
 const US_AP: Record<string, string> = {
@@ -68,13 +68,15 @@ const US_AP: Record<string, string> = {
   fla: "Florida", ill: "Illinois", ind: "Indiana", kan: "Kansas", kans: "Kansas", mass: "Massachusetts", mich: "Michigan",
   minn: "Minnesota", miss: "Mississippi", mont: "Montana", neb: "Nebraska", nebr: "Nebraska", nev: "Nevada", okla: "Oklahoma",
   ore: "Oregon", oreg: "Oregon", penn: "Pennsylvania", tenn: "Tennessee", tex: "Texas", wash: "Washington", wis: "Wisconsin",
-  wyo: "Wyoming", wva: "West Virginia",
+  wyo: "Wyoming", wva: "West Virginia", ont: "Ontario", que: "Quebec", alta: "Alberta", man: "Manitoba", sask: "Saskatchewan",
+  pei: "Prince Edward Island",
 };
 // Countries as people write them in their own language.
 const ENDONYMS: Record<string, string> = {
   brasil: "Brazil", deutschland: "Germany", espana: "Spain", italia: "Italy", osterreich: "Austria", schweiz: "Switzerland",
   suisse: "Switzerland", nederland: "Netherlands", sverige: "Sweden", norge: "Norway", danmark: "Denmark", polska: "Poland",
-  eire: "Ireland", mexico: "Mexico", "great britain": "United Kingdom", britain: "United Kingdom",
+  eire: "Ireland", mexico: "Mexico", "great britain": "United Kingdom", britain: "United Kingdom", turkey: "Turkiye",
+  uae: "United Arab Emirates", "czech republic": "Czechia", holland: "Netherlands",
 };
 const fold = (s: unknown) => String(s ?? "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/\./g, "").replace(/\s+/g, " ").trim();
 // What a region word can mean: "tx" Texas, "on" Ontario, "wa" Washington or Western Australia.
@@ -83,7 +85,11 @@ const regionNames = (part: string) =>
 const KNOWN_REGIONS = new Set([
   ...Object.keys(US_STATES), ...Object.values(US_STATES).map(fold), ...Object.keys(US_AP), ...Object.keys(OTHER_REGIONS),
   ...Object.values(OTHER_REGIONS).flat().map(fold), ...Object.keys(COUNTRY_WORDS), ...Object.keys(ENDONYMS),
-  "canada", "australia", "germany", "france", "spain", "italy", "ireland", "netherlands", "japan", "mexico", "brazil", "israel",
+  ...("canada,australia,germany,france,spain,italy,ireland,netherlands,the netherlands,japan,mexico,brazil,israel,portugal,norway," +
+    "sweden,denmark,finland,iceland,austria,switzerland,belgium,luxembourg,poland,czechia,hungary,greece,turkiye,croatia,slovenia," +
+    "serbia,romania,bulgaria,estonia,latvia,lithuania,ukraine,northern ireland,scotland,wales,england,new zealand,south africa," +
+    "argentina,chile,colombia,peru,south korea,korea,china,taiwan,india,thailand,vietnam,indonesia,philippines,singapore,malaysia," +
+    "united arab emirates,egypt,morocco,nigeria,kenya").split(","),
 ]);
 // "St. Paul", "Saint Paul" and "St Paul" are one place to a person, but Open-Meteo knows one spelling,
 // anywhere in the name ("Bay St. Louis", "Port St. Lucie"). The short and the long form are both looked up.
@@ -99,28 +105,34 @@ function spellings(name: string): string[] {
     if (!re.test(name)) continue;
     for (const form of [short, long]) {
       const v = name.replace(re, form).replace(/\.\s*\./g, ".");
-      if (!out.some((x) => fold(x) === fold(v))) out.push(v);
+      // Compared as typed (dots kept): Open-Meteo answers "St John's" and "St. John's" differently.
+      if (!out.some((x) => x.toLowerCase() === v.toLowerCase())) out.push(v);
     }
   }
   return out.slice(0, 3);
 }
 
 export async function cityCenter(cache: KVNamespace, budget: Budget, city: string): Promise<Place | null> {
-  const key = `city7:${city.toLowerCase()}`;
+  const key = `city8:${city.toLowerCase()}`;
   const hit = await kvGet(cache, budget, key);
   if (hit) return hit as Place;
   const typed = ALIASES[fold(city)] ?? city;
   let [name, ...rest] = typed.split(",").map((x) => x.trim());
   if (!name) return null;
+  let whole: any[] | undefined; // the answer for the whole name, when it was already asked for
   // Without a comma the state or country may close the text ("Austin TX", "Portland Maine", "London
   // England"), but a city's own name may end in one too ("New Britain", "Port Washington", "West New York"):
   // the whole name is kept when Open-Meteo has a place with exactly that name.
   if (!rest.filter(Boolean).length) {
     const ws = name.split(/\s+/);
     const k = [3, 2, 1].find((k) => ws.length > k && KNOWN_REGIONS.has(fold(ws.slice(-k).join(" "))));
-    if (k && !(await geocode(budget, name, "en")).some((r) => fold(r.name) === fold(name))) {
-      rest = [ws.slice(-k).join(" ")];
-      name = ws.slice(0, -k).join(" ");
+    if (k) {
+      whole = await geocode(budget, name, "en");
+      if (!whole.some((r) => fold(r.name) === fold(name))) {
+        rest = [ws.slice(-k).join(" ")];
+        name = ws.slice(0, -k).join(" ");
+        whole = undefined;
+      }
     }
   }
   // Each part after the name must fit the city: "Austin, TX, USA" is Texas and the United States.
@@ -128,7 +140,17 @@ export async function cityCenter(cache: KVNamespace, budget: Budget, city: strin
   const seen = new Set<unknown>();
   let list: any[] = [];
   const idOf = (r: any) => r.id ?? [r.name, r.admin1, r.country_code, r.latitude, r.longitude].join("|");
-  for (const n of spellings(name)) for (const r of await geocode(budget, n, "en")) if (!seen.has(idOf(r))) (seen.add(idOf(r)), list.push(r));
+  // Another spelling only adds places of exactly that name: "Saint George" would add Freetown (Sierra Leone)
+  // to "St. George", and "St. John" would add St. John's to "Saint John".
+  // A name that only starts with the other spelling ("St. Petersburg" for "St Pete") counts when the typed
+  // spelling found no place of exactly its name.
+  let exactTyped = false;
+  for (const [i, n] of spellings(name).entries()) {
+    const found = i === 0 && whole ? whole : await geocode(budget, n, "en");
+    if (i === 0) exactTyped = found.some((r) => fold(r.name) === fold(n));
+    const keep = (r: any) => i === 0 || fold(r.name) === fold(n) || (!exactTyped && fold(r.name).startsWith(fold(n)));
+    for (const r of found) if (keep(r) && !seen.has(idOf(r))) (seen.add(idOf(r)), list.push(r));
+  }
   // A city typed in Hebrew, Arabic or Cyrillic is only found in its own language; its English name
   // (what Qloo is asked about) then comes from the same place's record.
   const script = /[\u0590-\u05FF]/.test(name) ? "he" : /[\u0600-\u06FF]/.test(name) ? "ar" : /[\u0400-\u04FF]/.test(name) ? "ru" : "";

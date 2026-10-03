@@ -1,4 +1,4 @@
-// City lookup against 340 realistic ways people type tour cities (test/geo-cases.json), each with the
+// City lookup against 370 realistic ways people type tour cities (test/geo-cases.json), each with the
 // city it should land on and whether the answer should flag what followed the comma. The geocoder's real
 // answers were recorded once (test/geo-fixtures.json, trimmed), so this runs offline. Not included, because
 // Open-Meteo has no good answer for them: Oahu, Big Island, Orange County, "Stoke, UK", "Kingston, UK", and
@@ -15,7 +15,7 @@ const FIX: Record<string, unknown[]> = Object.fromEntries(
 );
 const CASES: [string, string, string | null][] = JSON.parse(readFileSync(new URL("./geo-cases.json", import.meta.url), "utf8"));
 
-test("city lookup: 340 realistic inputs land on the right city, and only real mismatches are flagged", async () => {
+test("city lookup: 370 realistic inputs land on the right city, and only real mismatches are flagged", async () => {
   const original = globalThis.fetch;
   const missing = new Set<string>();
   globalThis.fetch = (async (input: any) => {
@@ -37,6 +37,6 @@ test("city lookup: 340 realistic inputs land on the right city, and only real mi
     globalThis.fetch = original;
   }
   assert.deepEqual([...missing], [], "every geocoder call has a recorded answer");
-  assert.equal(CASES.length, 340);
+  assert.equal(CASES.length, 370);
   assert.deepEqual(wrong, []);
 });
