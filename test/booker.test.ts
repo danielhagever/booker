@@ -279,3 +279,30 @@ test("rooms: bars and music venues count; golf, country and health clubs don't",
   assert.ok(room("Wine bar") && room("Pub") && room("Bowling alley", "Live music venue"));
   assert.ok(!room("Golf club") && !room("Golf club", "Bar") && !room("Country club") && !room("Health club"));
 });
+
+test("pacing holds when a timer fires late: each call waits for the previous one's real start", async () => {
+  const m = mockFetch(standardQloo());
+  const starts: number[] = [];
+  const mocked = globalThis.fetch;
+  globalThis.fetch = (async (i: any, init?: any) => {
+    if (new URL(typeof i === "string" ? i : i.url).host === "qloo.test") starts.push(Date.now());
+    return mocked(i, init);
+  }) as typeof fetch;
+  const realTimeout = globalThis.setTimeout;
+  let late = true; // the first wait fires 40 ms late, as a busy machine's timers do
+  globalThis.setTimeout = ((fn: any, ms?: number, ...a: any[]) => realTimeout(fn, (ms ?? 0) + (late && ms ? ((late = false), 40) : 0), ...a)) as any;
+  try {
+    // The venue and four acts are looked up together, so five calls queue at once.
+    await forVenue({ ...ENV(memoryKV().kv), QLOO_MIN_GAP_MS: "100" }, new Budget(48), { venue: { name: "Empty Bottle, Chicago" }, acts: PAST.map((a) => ({ name: a.name })), pitches: [], rising: false });
+    const gaps = starts.slice(1).map((t, i) => t - starts[i]);
+    assert.ok(Math.min(...gaps) >= 99, `gaps ${gaps}`);
+  } finally {
+    globalThis.setTimeout = realTimeout;
+    m.restore();
+  }
+});
+
+test("sizes near 1 still widen: a 0.9998 act's range reaches past 0.9998", () => {
+  assert.ok(fromSize(sizeOf(0.9998) + 0.1) > 0.9998);
+  assert.ok(Number.isFinite(sizeOf(1)));
+});

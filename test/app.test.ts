@@ -94,6 +94,35 @@ test("MCP: both tools are listed with their guidance, and a call answers in word
   }
 });
 
+test("summaries rank only the cities Qloo scored", () => {
+  const room = [{ name: "The Lexington" }];
+  const lon = { label: "London, United Kingdom", rooms: room };
+  assert.equal(tourSummary({ artist: { name: "Wednesday" }, cities: [lon] } as any), "Qloo has no city score for Wednesday in London. Best-fit rooms: The Lexington in London.");
+  const both: any = { artist: { name: "Wednesday" }, cities: [{ label: "Asheville, North Carolina", affinity: 0.996, rooms: [] }, lon] };
+  assert.equal(tourSummary(both), "Wednesday's crowd is strongest in Asheville (0.996). Qloo has no city score for London. Best-fit rooms: The Lexington in London.");
+});
+
+test("MCP: the answer names pitches that were only a closest match, with alternatives, and pitches not found", async () => {
+  const headers = { "content-type": "application/json", accept: "application/json, text/event-stream" };
+  const m = mockFetch((c) =>
+    c.host === "qloo.test" && c.path === "/search" && c.params.get("query") === "snail male"
+      ? { body: { results: [artist(13, "Snail Mail", 0.983), artist(14, "Snail Male Band", 0.4)] } }
+      : qloo(c),
+  );
+  try {
+    const call = new Request("https://booker.test/mcp", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "find_acts_for_venue", arguments: { venue: "The Empty Bottle, Chicago", acts: ["Wednesday"], pitches: ["snail male", "Nobody Real"] } } }),
+    });
+    const text = JSON.parse((await (await worker.fetch(call, env())).text()).split("\n").find((l) => l.startsWith("data: "))!.slice(6)).result.content[0].text;
+    assert.match(text, /Pitch "snail male" was matched to Snail Mail \(closest Qloo match, not an exact name\); alternatives: Snail Male Band \(Indie\) \[id /);
+    assert.match(text, /Pitches not found in Qloo: Nobody Real\./);
+  } finally {
+    m.restore();
+  }
+});
+
 test("summaries agree in number and read naturally", () => {
   const base: any = { venue: { name: "The Empty Bottle", city: "Chicago, Illinois" }, fits: [{ name: "Dehd" }], bills: [], inbox: [] };
   assert.equal(venueSummary(base), "For The Empty Bottle (Chicago), the acts that fit your crowd and size are Dehd.");

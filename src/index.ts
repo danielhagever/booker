@@ -27,7 +27,7 @@ const failure = (e: unknown) => {
 };
 
 // Bump whenever the pipeline or the result format changes, so no one gets yesterday's logic.
-const CACHE_VERSION = 4;
+const CACHE_VERSION = 5;
 
 async function sha(s: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -95,21 +95,30 @@ export function venueSummary(r: VenueResult): string {
   return parts.join(" ");
 }
 
+// Only cities Qloo scored are ranked; a city without a score is named as such, not called "strongest".
 export function tourSummary(r: TourResult): string {
-  const [a, b, c] = r.cities;
-  const score = (x: TourResult["cities"][number]) => (x.affinity !== undefined ? ` (${x.affinity.toFixed(3)})` : "");
-  const order = [a, b, c].filter(Boolean).map((x) => `${x.label.split(",")[0]}${score(x)}`);
-  const rooms = r.cities.filter((x) => x.rooms[0]).slice(0, 3).map((x) => `${x.rooms[0].name} in ${x.label.split(",")[0]}`);
-  return `${r.artist.name}'s crowd is strongest in ${order[0]}${order.length > 1 ? `, then ${list(order.slice(1))}` : ""}.${rooms.length ? ` Best-fit rooms: ${list(rooms)}.` : ""}`;
+  const city = (x: TourResult["cities"][number]) => x.label.split(",")[0];
+  const scored = r.cities.filter((x) => x.affinity !== undefined);
+  const unscored = r.cities.filter((x) => x.affinity === undefined).map(city);
+  const order = scored.slice(0, 3).map((x) => `${city(x)} (${x.affinity!.toFixed(3)})`);
+  const head = order.length
+    ? `${r.artist.name}'s crowd is strongest in ${order[0]}${order.length > 1 ? `, then ${list(order.slice(1))}` : ""}.${unscored.length ? ` Qloo has no city score for ${list(unscored)}.` : ""}`
+    : `Qloo has no city score for ${r.artist.name} in ${list(unscored)}.`;
+  const rooms = r.cities.filter((x) => x.rooms[0]).slice(0, 3).map((x) => `${x.rooms[0].name} in ${city(x)}`);
+  return `${head}${rooms.length ? ` Best-fit rooms: ${list(rooms)}.` : ""}`;
 }
 
-// What an agent should tell the person before relying on the answer.
-function caveats(r: { acts?: VenueResult["acts"]; venue?: VenueResult["venue"]; artist?: TourResult["artist"]; unresolved?: string[] }): string {
-  const picks = [r.venue, ...(r.acts ?? []), r.artist].filter((x): x is NonNullable<typeof x> => !!x);
-  const parts = picks
-    .filter((p) => p.match === "closest" || p.match === "ambiguous")
-    .map((p) => `"${p.input}" was matched to ${p.name} (${p.match === "closest" ? "closest Qloo match, not an exact name" : "several Qloo entries share this name; the first was used"})${p.alternatives.length ? `; alternatives: ${p.alternatives.map((a) => `${a.name}${a.note ? ` (${a.note})` : ""} [id ${a.id}]`).join(", ")}` : ""}.`);
+// What an agent should tell the person before relying on the answer: every name that was only a closest
+// match or shared by several Qloo entries (venue, acts, pitches, artist), and every name not found.
+function caveats(r: { acts?: VenueResult["acts"]; venue?: VenueResult["venue"]; artist?: TourResult["artist"]; unresolved?: string[]; inbox?: VenueResult["inbox"] }): string {
+  const found = (r.inbox ?? []).filter((p) => p.id);
+  const picks = [r.venue, ...(r.acts ?? []), r.artist].filter((x): x is NonNullable<typeof x> => !!x).map((p) => ({ p, what: "" }));
+  const parts = [...picks, ...found.map((p) => ({ p, what: "Pitch " }))]
+    .filter(({ p }) => p.match === "closest" || p.match === "ambiguous")
+    .map(({ p, what }) => `${what}"${p.input}" was matched to ${p.name} (${p.match === "closest" ? "closest Qloo match, not an exact name" : "several Qloo entries share this name; the first was used"})${p.alternatives.length ? `; alternatives: ${p.alternatives.map((a) => `${a.name}${a.note ? ` (${a.note})` : ""} [id ${a.id}]`).join(", ")}` : ""}.`);
   if (r.unresolved?.length) parts.push(`Not found in Qloo: ${r.unresolved.join(", ")}.`);
+  const lost = (r.inbox ?? []).filter((p) => !p.id).map((p) => p.input);
+  if (lost.length) parts.push(`Pitches not found in Qloo: ${lost.join(", ")}.`);
   return parts.join(" ");
 }
 

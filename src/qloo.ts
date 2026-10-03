@@ -62,7 +62,8 @@ export class Qloo {
   env: QlooEnv;
   budget: Budget;
   private gap: number;
-  private nextStart = 0;
+  private last = -Infinity;
+  private queue: Promise<void> = Promise.resolve();
   constructor(env: QlooEnv, budget: Budget) {
     this.env = env;
     this.budget = budget;
@@ -70,12 +71,16 @@ export class Qloo {
     this.gap = env.QLOO_MIN_GAP_MS !== undefined && Number.isFinite(g) && g >= 0 ? g : MIN_GAP_MS;
   }
 
-  // Each call books the next start time when it is made, so calls made together go out in turn.
-  private async turn(): Promise<void> {
-    const now = Date.now();
-    const at = Math.max(now, this.nextStart);
-    this.nextStart = at + this.gap;
-    if (at > now) await new Promise((r) => setTimeout(r, at - now));
+  // Calls take turns: each starts at least `gap` after the previous one actually started. The gap is
+  // measured after the wait, so a timer that fires late can't squeeze the next call closer.
+  private turn(): Promise<void> {
+    const mine = this.queue.then(async () => {
+      const wait = this.last + this.gap - Date.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait + 1));
+      this.last = Date.now();
+    });
+    this.queue = mine;
+    return mine;
   }
 
   // One bounded retry: a call from another search at the same moment can still meet a 429.

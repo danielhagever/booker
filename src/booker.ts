@@ -137,10 +137,12 @@ const fmt4 = (n?: number) => (n === undefined ? "?" : n.toFixed(4));
 const down4 = (x: number) => Math.floor(x * 1e4) / 1e4;
 const up4 = (x: number) => Math.ceil(x * 1e4) / 1e4;
 
-// Qloo's popularity is a percentile and bunches up near 1: 0.98 and 0.99 are clubs and theaters apart
-// (measured: 100-300 cap acts 0.35-0.55, 300-800 cap 0.90-0.97, theaters 0.98-0.99). Sizes are compared on
-// -log10(1 - p), where each step of 1 is ten times rarer, and widened by 0.1 on that scale.
-export const sizeOf = (p: number) => -Math.log10(1 - Math.min(p, 0.9995));
+// Qloo's popularity is a percentile and bunches up near 1: in the rooms we checked, 0.98 and 0.99 were
+// clubs and theaters apart (100-300 cap acts 0.35-0.55, 300-800 cap 0.90-0.97, theaters 0.98-0.99). It is
+// Qloo's own measure, not capacity or ticket sales (Morgan Wallen, a stadium act, is 0.968), so the size
+// verdicts are a guide. Sizes are compared on -log10(1 - p), where each step of 1 is ten times rarer, and
+// widened by 0.1 on that scale; the cap only keeps p = 1 finite.
+export const sizeOf = (p: number) => -Math.log10(1 - Math.min(p, 0.99999));
 export const fromSize = (s: number) => 1 - 10 ** -s;
 const WIDEN = 0.1;
 const TASTE_GAP = 0.09;
@@ -355,7 +357,7 @@ export async function forVenue(
     ],
     limits: [
       "Qloo measures taste: what fans of your acts also like. It doesn't know ticket prices, routing, fees or who is on tour.",
-      "Popularity is Qloo's percentile across all artists, not ticket sales; your own acts set the scale.",
+      "Popularity is Qloo's measure across all artists, not ticket sales or capacity (a stadium country act scored 0.968, inside a rock club's range): your own acts set the scale, and the size verdicts are a guide.",
       "The city is part of the ranking when Qloo can place it (cities work; neighborhoods don't, measured).",
     ],
     degraded,

@@ -14,8 +14,8 @@ The other side has the same problem in reverse: an artist or agent routing a tou
 
 **For a venue** ("I book a venue"): name the venue with its city and the acts that did well there; optionally paste the acts pitching you.
 
-1. **Finds the room and the acts in Qloo.** The venue is a Qloo place filed as a music venue, a theater, or a bar or club where shows happen (a record store, a restaurant or a golf club with the same name doesn't count); each act is resolved the way Qloo's harness does, an exact name first, a near-miss only if it resembles what was typed, and "Not it?" lets you pick another candidate by its Qloo ID.
-2. **Measures your room's size from your own history.** The acts you named have a Qloo popularity; that range is your room's size. Qloo's popularity bunches up near 1 (100-300 capacity acts sit around 0.35-0.55, 300-800 capacity clubs around 0.90-0.97, theaters at 0.98-0.99, measured), so sizes are compared on a log scale.
+1. **Finds the room and the acts in Qloo.** The venue is a Qloo place filed as a music venue, a theater, or a bar, pub or club (a record store or a golf club with the same name doesn't count); each act is resolved the way Qloo's harness does, an exact name first, a near-miss only if it resembles what was typed, and "Not it?" lets you pick another candidate by its Qloo ID.
+2. **Measures your room's size from your own history.** The acts you named have a Qloo popularity; that range is your room's size. Qloo's popularity bunches up near 1 (in the rooms we checked, acts at 100-300 capacity rooms sat around 0.35-0.55, at 300-800 capacity clubs 0.90-0.97, at theaters 0.98-0.99), so sizes are compared on a log scale. It is Qloo's own measure, not ticket sales or capacity: Morgan Wallen, a stadium act, scores 0.968, inside a rock club's range. So the size verdicts are a guide, and taste is judged separately.
 3. **Ranks acts that fit**: artists the fans of your acts love (Qloo affinity), at your size, with your city as a signal, without your own acts. **Openers and next-up acts** come from the same crowd below your range.
 4. **Explains each pick**: the act of yours whose fans like it most.
 5. **Suggests bills you could announce**: each top act with the opener whose fans overlap most.
@@ -90,7 +90,7 @@ When a name was only a closest match, the tool's answer says so and lists the al
 ## Known limitations
 
 - Qloo measures taste, not money: it doesn't know ticket prices, fees, routing, holds, radius clauses or who is on tour. Booker shortlists; the booker still makes the offer.
-- Popularity is Qloo's percentile across all artists, not ticket sales; your own acts set the scale, so a room that names only its biggest nights gets bigger suggestions.
+- Popularity is Qloo's measure across all artists, not ticket sales or capacity (Morgan Wallen, a stadium act, scores 0.968, inside a rock club's range); your own acts set the scale, so a room that names only its biggest nights gets bigger suggestions, and the size verdicts are a guide.
 - The city is a signal when Qloo can place it (cities work, neighborhoods don't).
 - In the artist view, Qloo knows each room's taste, not its capacity: check that a room's size fits before pitching it.
 - "What Qloo says your room's visitors like" is Qloo's view of people who like the venue, which can differ from who buys tickets.
