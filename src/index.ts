@@ -77,7 +77,8 @@ export function venueSummary(r: VenueResult): string {
   const parts = [fits.length ? `For ${r.venue.name}${where}, the acts that fit your crowd and size are ${list(fits)}.` : `For ${r.venue.name}${where}, Qloo found no acts in your size range.`];
   if (r.bills[0]) parts.push(`Try ${r.bills[0].headliner} with ${r.bills[0].opener} opening.`);
   if (r.inbox.length) {
-    const n = (v: string) => r.inbox.filter((p) => p.verdict === v).length;
+    // A pitch Qloo doesn't know is "unscored" with no ID: said as not in Qloo, not as unscored.
+    const n = (v: string) => r.inbox.filter((p) => (v === "missing" ? !p.id : p.verdict === v && (v !== "unscored" || !!p.id))).length;
     const said = (
       [
         ["fits", "fits your room", "fit your room"],
@@ -85,6 +86,7 @@ export function venueSummary(r: VenueResult): string {
         ["bigger", "is bigger than your room", "are bigger than your room"],
         ["off-taste", "is off your crowd's taste", "are off your crowd's taste"],
         ["unscored", "couldn't be scored", "couldn't be scored"],
+        ["missing", "isn't in Qloo", "aren't in Qloo"],
       ] as const
     )
       .map(([v, one, many]) => [n(v), one, many] as const)

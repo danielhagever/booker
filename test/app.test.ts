@@ -126,8 +126,10 @@ test("MCP: the answer names pitches that were only a closest match, with alterna
 test("summaries agree in number and read naturally", () => {
   const base: any = { venue: { name: "The Empty Bottle", city: "Chicago, Illinois" }, fits: [{ name: "Dehd" }], bills: [], inbox: [] };
   assert.equal(venueSummary(base), "For The Empty Bottle (Chicago), the acts that fit your crowd and size are Dehd.");
-  const inbox = [{ verdict: "fits" }, { verdict: "smaller" }, { verdict: "off-taste" }, { verdict: "off-taste" }];
+  const inbox = [{ verdict: "fits", id: "a" }, { verdict: "smaller", id: "b" }, { verdict: "off-taste", id: "c" }, { verdict: "off-taste", id: "d" }];
   assert.match(venueSummary({ ...base, inbox }), /From your inbox of 4: 1 fits your room, 1 fits as an opener and 2 are off your crowd's taste\.$/);
+  const lost = [{ verdict: "unscored", id: "e" }, { verdict: "unscored", id: "" }, { verdict: "unscored", id: "" }];
+  assert.match(venueSummary({ ...base, inbox: lost }), /From your inbox of 3: 1 couldn't be scored and 2 aren't in Qloo\.$/);
   const tour: any = { artist: { name: "Wednesday" }, cities: [{ label: "Asheville, North Carolina", affinity: 0.996, rooms: [{ name: "The Orange Peel" }] }, { label: "Chicago, Illinois", affinity: 0.964, rooms: [] }] };
   assert.equal(tourSummary(tour), "Wednesday's crowd is strongest in Asheville (0.996), then Chicago (0.964). Best-fit rooms: The Orange Peel in Asheville.");
 });
