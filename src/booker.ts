@@ -194,18 +194,25 @@ export async function forVenue(
   // 3. Acts that fit: liked by the fans of your acts, in your city, at your size.
   let city = cityOf(v);
   let qlooCity: string | undefined;
+  let cityAnswered = false; // the city has already shaped a ranking
   const ask = async (o: Parameters<Qloo["artists"]>[0]) => {
     try {
       const r = await q.artists({ ...o, city });
       if (r.locality && !qlooCity) qlooCity = r.locality.name;
+      if (r.list.length && city) cityAnswered = true;
       // Seen live: a small town (Indian Hills, for Red Rocks) resolves but returns nothing at all. Ask again
-      // without it, and say so, rather than report that nothing fits the room's size.
+      // without it, and say so, rather than report that nothing fits the room's size. If the city already
+      // shaped the acts that fit, only this list is asked without it.
       if (!r.list.length && city && !o.only) {
         const plain = (await q.artists({ ...o, city: undefined })).list;
         if (plain.length) {
-          trace.push({ step: "City", detail: `Qloo had no answers with "${city}" as a signal, so the city isn't part of the ranking` });
-          city = undefined;
-          qlooCity = undefined;
+          if (cityAnswered) {
+            trace.push({ step: "City", detail: `Qloo had no ${o.popMin === undefined ? "openers" : "acts"} for this with "${city}" as a signal, so those are ranked without the city` });
+          } else {
+            trace.push({ step: "City", detail: `Qloo had no answers with "${city}" as a signal, so the city isn't part of the ranking` });
+            city = undefined;
+            qlooCity = undefined;
+          }
           return plain;
         }
       }

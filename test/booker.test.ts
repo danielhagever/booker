@@ -453,6 +453,8 @@ test("twelfth pass: a longer name in the typed city, rooms by category, cities o
   assert.deepEqual(cityList("Chicago, Austin, Asheville").list, ["Chicago", "Austin", "Asheville"]);
   assert.deepEqual(cityList("Austin, Texas, Chicago, Illinois").list, ["Austin, Texas", "Chicago, Illinois"]);
   assert.deepEqual(cityList("Austin, Texas\nLondon, United Kingdom\nPortland, Maine").list, ["Austin, Texas", "London, United Kingdom", "Portland, Maine"]);
+  assert.deepEqual(cityList("Brooklyn, NY\nAsheville, NC\nChicago, IL\nAustin, TX").list, ["Brooklyn, NY", "Asheville, NC", "Chicago, IL", "Austin, TX"], "seen live: NY and NC were cities");
+  assert.deepEqual(cityList("Charleston, WV; Austin, TX, USA; Portland, Ore.; Toronto, ON; Reykjavik, Iceland").list, ["Charleston, WV", "Austin, TX, USA", "Portland, Ore.", "Toronto, ON", "Reykjavik, Iceland"]);
 });
 
 test("a city Qloo resolves but answers nothing for is dropped as a signal, and the trace says so (seen live: Indian Hills)", async () => {
@@ -466,6 +468,22 @@ test("a city Qloo resolves but answers nothing for is dropped as a signal, and t
     assert.ok(r.fits.length > 0);
     assert.equal(r.city, undefined);
     assert.ok(r.trace.some((t) => t.step === "City" && /no answers with "Chicago, Illinois"/.test(t.detail)));
+  } finally {
+    m.restore();
+  }
+});
+
+test("when only the openers come back empty with the city, the city still shapes the acts that fit", async () => {
+  const m = mockFetch((c) =>
+    insights(c, "urn:entity:artist") && c.params.get("signal.location.query") && !c.params.get("filter.popularity.min") && !c.params.get("filter.results.entities")
+      ? { body: { results: { entities: [] }, query: { localities: { signal: { name: "Chicago", location: { lat: 41.84, lon: -87.69 } } } } } }
+      : standardQloo()(c),
+  );
+  try {
+    const r = await forVenue(ENV(memoryKV().kv), new Budget(48), { venue: { name: "Empty Bottle, Chicago" }, acts: PAST.map((a) => ({ name: a.name })), pitches: [], rising: false });
+    assert.equal(r.city, "Chicago, Illinois");
+    assert.ok(r.openers.length > 0 && r.rivals.rooms.length > 0);
+    assert.ok(r.trace.some((t) => t.step === "City" && /no openers .* so those are ranked without the city/.test(t.detail)));
   } finally {
     m.restore();
   }

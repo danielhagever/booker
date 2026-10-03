@@ -58,28 +58,37 @@ export function names(v: unknown, max: number): { list: Named[]; leftOut: string
 }
 
 // Cities: one per line or separated by semicolons ("Austin, Texas" keeps its comma). A line of several
-// cities with commas ("Chicago, Austin, Asheville") is split too: a part that is a state, province or
-// country stays with the city before it ("Austin, Texas, Chicago, Illinois" is two cities).
-const REGIONS = new Set(
-  ("alabama al alaska ak arizona az arkansas ar california ca colorado co connecticut ct delaware de florida fl georgia ga hawaii hi " +
-    "idaho id illinois il indiana in iowa ia kansas ks kentucky ky louisiana la maine me maryland md massachusetts ma michigan mi " +
-    "minnesota mn mississippi ms missouri mo montana mt nebraska ne nevada nv ohio oh oklahoma ok oregon or pennsylvania pa " +
-    "tennessee tn texas tx utah ut vermont vt virginia va washington wa wisconsin wi wyoming wy dc ontario on quebec qc alberta ab " +
-    "manitoba mb usa us uk england scotland wales ireland canada mexico germany france spain italy portugal netherlands belgium " +
-    "sweden norway denmark finland poland austria switzerland australia japan brazil argentina israel")
-    .split(" "),
-);
-const MULTI_REGIONS = ["new york", "new jersey", "new mexico", "new hampshire", "north carolina", "south carolina", "north dakota", "south dakota", "rhode island", "west virginia", "district of columbia", "british columbia", "nova scotia", "united kingdom", "united states", "new zealand", "south korea", "czech republic"];
-const isRegion = (p: string) => {
-  const k = p.trim().toLowerCase().replace(/\./g, "");
-  return REGIONS.has(k) || MULTI_REGIONS.includes(k);
-};
+// cities with commas ("Chicago, Austin, Asheville") is split too: a state, province or country (name, code
+// or newspaper abbreviation) stays with the city before it ("Austin, Texas, Chicago, Illinois" is two
+// cities; "Austin, TX, USA" is one).
+const STATES: [string, string, string?][] = [
+  ["alabama", "al", "ala"], ["alaska", "ak"], ["arizona", "az", "ariz"], ["arkansas", "ar", "ark"], ["california", "ca", "calif"],
+  ["colorado", "co", "colo"], ["connecticut", "ct", "conn"], ["delaware", "de", "del"], ["district of columbia", "dc"], ["florida", "fl", "fla"],
+  ["georgia", "ga"], ["hawaii", "hi"], ["idaho", "id"], ["illinois", "il", "ill"], ["indiana", "in", "ind"], ["iowa", "ia"], ["kansas", "ks", "kan"],
+  ["kentucky", "ky"], ["louisiana", "la"], ["maine", "me"], ["maryland", "md"], ["massachusetts", "ma", "mass"], ["michigan", "mi", "mich"],
+  ["minnesota", "mn", "minn"], ["mississippi", "ms", "miss"], ["missouri", "mo"], ["montana", "mt", "mont"], ["nebraska", "ne", "neb"],
+  ["nevada", "nv", "nev"], ["new hampshire", "nh"], ["new jersey", "nj"], ["new mexico", "nm"], ["new york", "ny"], ["north carolina", "nc"],
+  ["north dakota", "nd"], ["ohio", "oh"], ["oklahoma", "ok", "okla"], ["oregon", "or", "ore"], ["pennsylvania", "pa", "penn"],
+  ["rhode island", "ri"], ["south carolina", "sc"], ["south dakota", "sd"], ["tennessee", "tn", "tenn"], ["texas", "tx", "tex"], ["utah", "ut"],
+  ["vermont", "vt"], ["virginia", "va"], ["washington", "wa", "wash"], ["west virginia", "wv", "wva"], ["wisconsin", "wi", "wis"],
+  ["wyoming", "wy", "wyo"], ["ontario", "on", "ont"], ["quebec", "qc"], ["british columbia", "bc"], ["alberta", "ab", "alta"],
+  ["manitoba", "mb"], ["saskatchewan", "sk"], ["nova scotia", "ns"], ["new brunswick", "nb"], ["newfoundland and labrador", "nl"],
+  ["prince edward island", "pe"],
+];
+const COUNTRIES = (
+  "usa,us,united states,united states of america,uk,united kingdom,great britain,england,scotland,wales,northern ireland,ireland,canada,mexico," +
+  "germany,france,spain,italy,portugal,netherlands,the netherlands,belgium,luxembourg,switzerland,austria,denmark,sweden,norway,finland,iceland," +
+  "poland,czech republic,czechia,hungary,greece,turkey,israel,australia,new zealand,japan,south korea,korea,china,taiwan,india,brazil,argentina," +
+  "chile,colombia,peru,south africa"
+).split(",");
+const REGIONS = new Set([...STATES.flat().filter((x): x is string => !!x), ...COUNTRIES]);
+const isRegion = (p: string) => REGIONS.has(p.trim().toLowerCase().replace(/\./g, "").replace(/\s+/g, " "));
 function splitCities(line: string): string[] {
   const parts = line.split(",");
-  if (parts.length < 3 && !(parts.length === 2 && !isRegion(parts[1]))) return [line];
+  if (parts.length < 2) return [line];
   const out: string[] = [];
   for (const p of parts) {
-    if (out.length && isRegion(p) && !out[out.length - 1].includes(",")) out[out.length - 1] += `,${p}`;
+    if (out.length && isRegion(p)) out[out.length - 1] += `,${p}`;
     else out.push(p);
   }
   return out;
