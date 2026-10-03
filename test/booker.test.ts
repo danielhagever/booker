@@ -228,6 +228,9 @@ test("helpers: resemblance, names without 'the', music rooms, city spelling, lis
   assert.ok(!resembles("Bea", "Beach House"), "a fragment of a word isn't a name");
   assert.equal(nameKey("Beyonce"), nameKey("Beyoncé"));
   assert.equal(nameKey("Sigur Ros"), nameKey("Sigur Rós"));
+  // Initials typed with spaces, the way agents and Wikipedia write them (seen live: "S. G. Goodman" became S N U G).
+  for (const [typed, qloo] of [["S. G. Goodman", "S.G. Goodman"], ["J. J. Cale", "J.J. Cale"], ["B. B. King", "B.B. King"], ["Rag'n'Bone Man", "Rag 'n' Bone Man"], ["Keb Mo", "Keb' Mo'"]])
+    assert.equal(nameKey(typed), nameKey(qloo), typed);
   assert.equal(nameKey("The Empty Bottle"), nameKey("Empty Bottle"));
   assert.ok(isRoom({ id: "x", name: "x", types: [], categories: ["Bar", "Live music venue"] }));
   assert.ok(!isRoom({ id: "x", name: "x", types: [], categories: ["Record store"] }));
@@ -238,6 +241,7 @@ test("helpers: resemblance, names without 'the', music rooms, city spelling, lis
   assert.deepEqual(names("\u201eTyler, the Creator\u201c, \u00abBlack Country, New Road\u00bb, Wet Leg", 8).list.map((n) => n.name), ["Tyler, the Creator", "Black Country, New Road", "Wet Leg"]);
   assert.deepEqual(names('"Tyler, the Creator, Wednesday', 8).list.map((n) => n.name), ["Tyler", "the Creator", "Wednesday"], "an unclosed quote doesn't swallow the list");
   assert.deepEqual(names("'Tyler, the Creator', \u201eBlack Country, New Road\u201d, 'Guns N' Roses', Antone's", 8).list.map((n) => n.name), ["Tyler, the Creator", "Black Country, New Road", "Guns N' Roses", "Antone's"]);
+  assert.deepEqual(names("\u2018Tyler, the Creator\u2019, Antone\u2019s, Wednesday", 8).list.map((n) => n.name), ["Tyler, the Creator", "Antone\u2019s", "Wednesday"]);
   assert.deepEqual(names([{ name: "Twins", id: "not-an-id" }], 8).list, [{ name: "Twins" }]);
   assert.deepEqual(cityList("Austin, Texas\nChicago, Illinois; Austin, Texas").list, ["Austin, Texas", "Chicago, Illinois"]);
 });
@@ -376,4 +380,18 @@ test("venues: the words that name the room decide, not the city, a kind of room,
   assert.equal(pick("Bowery Ballroom, NYC", bowery), "The Bowery Ballroom");
   assert.equal(pick("Fillmore, San Francisco, California", [place("The Fillmore", "Detroit", "Michigan"), place("The Fillmore", "San Francisco", "California")]), "The Fillmore");
   assert.equal(chooseVenue("Fillmore, San Francisco, California", [place("The Fillmore", "Detroit", "Michigan"), place("The Fillmore", "San Francisco", "California")])!.pick.city, "San Francisco");
+  // Ninth pass: extra words after the name, nicknames and abbreviations for the place, spelling, other kinds of room.
+  const hob3 = [place("House of Blues Dallas", "Dallas", "Texas"), place("House of Blues Houston", "Houston", "Texas"), place("House of Blues Chicago", "Chicago", "Illinois")];
+  assert.equal(pick("House of Blues in Chicago", hob3), "House of Blues Chicago");
+  const sf = [place("The Fillmore", "Detroit", "Michigan"), place("The Fillmore", "San Francisco", "California")];
+  for (const t of ["Fillmore SF", "The Fillmore San Francisco CA 94115"]) assert.equal(chooseVenue(t, sf)!.pick.city, "San Francisco", t);
+  const crystal = [place("Crystal Ballroom", "Somerville", "Massachusetts"), place("Crystal Ballroom", "Portland", "Oregon")];
+  assert.equal(chooseVenue("Crystal Ballroom, Portland, Ore.", crystal)!.pick.city, "Portland");
+  assert.equal(chooseVenue("Brooklyn Bowl, NYC", [place("Brooklyn Bowl", "Las Vegas", "Nevada"), place("Brooklyn Bowl", "Brooklyn", "New York")])!.pick.city, "Brooklyn");
+  const mint = [place("The Mint", "New Orleans", "Louisiana", ["Bar"]), place("The Mint", "Los Angeles", "California")];
+  assert.equal(chooseVenue("The Mint LA", mint)!.pick.city, "Los Angeles");
+  assert.equal(pick("Lincoln Theater", [place("Lincoln Hall", "Chicago", "Illinois"), place("Lincoln Theatre", "Washington", "District of Columbia", ["Performing arts theater"])]), "Lincoln Theatre");
+  assert.equal(pick("Bluebird Theatre", [place("The Bluebird Cafe", "Nashville", "Tennessee", ["Cafe"]), place("Bluebird Theater", "Denver", "Colorado")]), "Bluebird Theater");
+  assert.equal(pick("Red Rocks Amphitheater", [place("Red Rocks Bar", "Denver", "Colorado", ["Bar"]), place("Red Rocks Amphitheatre", "Morrison", "Colorado", ["Amphitheater"])]), "Red Rocks Amphitheatre");
+  assert.equal(pick("Lincoln Hall", [place("Lincoln Theatre", "Washington", "District of Columbia", ["Performing arts theater"])]), "Lincoln Theatre (closest)", "another kind of room isn't an exact name");
 });

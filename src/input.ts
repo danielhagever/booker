@@ -16,23 +16,25 @@ export const clean = (v: unknown, max = MAX_NAME): string => (typeof v === "stri
 // semicolons or new lines. A name with a comma goes in quotes: "Tyler, the Creator". Splitting never
 // happens on "and": "Simon and Garfunkel" stays one name.
 export function splitNames(text: string): string[] {
-  // Each opening quote has its own closing ones: "...", “...”, „...“ or „...”, «...», and '...' when
-  // the single quote opens a name and closes it just before a separator (an apostrophe inside stays).
-  const CLOSE: Record<string, string> = { '"': '"', "“": "”", "„": "“”", "«": "»", "'": "'" };
+  // Each opening quote has its own closing ones: "...", “...”, „...“ or „...”, «...», and '...' or
+  // ‘...’ when the single quote opens a name and closes it just before a separator (an apostrophe
+  // inside stays, straight or curly: Antone’s).
+  const CLOSE: Record<string, string> = { '"': '"', "“": "”", "„": "“”", "«": "»", "'": "'", "‘": "’" };
+  const single = (ch: string) => ch === "'" || ch === "‘" || ch === "’";
   const chars = [...text];
   const sepAt = (i: number) => /^\s*([,;\n]|$)/.test(chars.slice(i).join(""));
   const out: string[] = [];
   let cur = "";
   let closer = "";
   chars.forEach((ch, i) => {
-    if (closer && closer.includes(ch) && (ch !== "'" || sepAt(i + 1))) closer = "";
-    else if (!closer && CLOSE[ch] && (ch !== "'" || cur.trim() === "")) closer = CLOSE[ch];
+    if (closer && closer.includes(ch) && (!single(ch) || sepAt(i + 1))) closer = "";
+    else if (!closer && CLOSE[ch] && (!single(ch) || cur.trim() === "")) closer = CLOSE[ch];
     else if (!closer && (ch === "," || ch === ";" || ch === "\n")) (out.push(cur), (cur = ""));
     else cur += ch;
   });
   out.push(cur);
   // A quote that never closes would join everything after it: split that text plainly instead.
-  return closer ? text.split(/[,;\n]/).map((x) => x.replace(/["“”„«»]/g, "").replace(/^\s*'|'\s*$/g, "")) : out;
+  return closer ? text.split(/[,;\n]/).map((x) => x.replace(/["“”„«»]/g, "").replace(/^\s*['‘]|['’]\s*$/g, "")) : out;
 }
 
 export function names(v: unknown, max: number): { list: Named[]; leftOut: string[] } {
