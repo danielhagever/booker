@@ -44,11 +44,11 @@ export class QlooError extends AppError {
   }
 }
 
-// Measured: tag searches take 3-4 s and heavy insights calls up to 5 s under load.
+// Measured on the hackathon key: heavy insights calls take up to 5 s under load.
 const TIMEOUT_MS = 12000;
 
-// Qloo answers 429 to the sixth call within about a second (measured 2026-10-03 for Newcomer: 5 at once
-// pass, 6 lose one; a steady 4 a second loses one, 3 a second none). Calls start at most every 340 ms.
+// Qloo answers 429 to the sixth call within about a second (measured on the hackathon key 2026-10-03: 5
+// at once pass, 6 lose one; a steady 4 a second loses one, 3 a second none). Calls start at most every 340 ms.
 const MIN_GAP_MS = 340;
 
 // The rooms Booker looks for: places Qloo files as live music venues or concert halls (measured tag IDs).
@@ -143,8 +143,8 @@ export class Qloo {
     const params: Record<string, string> = { "filter.type": "urn:entity:artist", take: String(Math.min(50, o.take)) };
     if (o.entities.length) params["signal.interests.entities"] = o.entities.join(",");
     if (o.city) params["signal.location.query"] = o.city;
-    if (o.popMin !== undefined) params["filter.popularity.min"] = o.popMin.toFixed(3);
-    if (o.popMax !== undefined) params["filter.popularity.max"] = o.popMax.toFixed(3);
+    if (o.popMin !== undefined) params["filter.popularity.min"] = o.popMin.toFixed(4);
+    if (o.popMax !== undefined) params["filter.popularity.max"] = o.popMax.toFixed(4);
     if (o.exclude?.length) params["filter.exclude.entities"] = o.exclude.join(",");
     if (o.only?.length) params["filter.results.entities"] = o.only.join(",");
     if (o.rising) params["bias.trends"] = "high";

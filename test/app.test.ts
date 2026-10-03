@@ -129,3 +129,38 @@ test("the acts' bars span the lowest to the highest affinity shown (Qloo's are c
 test("switching tabs clears the other side's answer", () => {
   assert.match(page, /\$\("results"\)\.innerHTML = intro; \$\("side"\)\.innerHTML = ""/);
 });
+
+test("only new searches count against the hourly limit; a saved answer is free", async () => {
+  const store = new Map<string, string>();
+  const fake = { match: async (k: Request) => (store.has(k.url) ? new Response(store.get(k.url)) : undefined), put: async (k: Request, v: Response) => void store.set(k.url, await v.text()) };
+  (globalThis as any).caches = { default: fake };
+  const m = mockFetch(qloo);
+  try {
+    const kv = memoryKV();
+    const body = { venue: "The Empty Bottle, Chicago", acts: "Wednesday" };
+    for (let i = 0; i < 25; i++) assert.equal((await worker.fetch(post("/api/venue", body), env(kv.kv))).status, 200);
+    assert.deepEqual([...store.values()], ["1"], "25 identical searches, one counted");
+    for (let i = 2; i <= 20; i++) await worker.fetch(post("/api/venue", { ...body, acts: `Wednesday, Act ${i}` }), env(kv.kv));
+    const over = await worker.fetch(post("/api/venue", { ...body, acts: "Wednesday, Act 21" }), env(kv.kv));
+    assert.equal(over.status, 429);
+    assert.match(((await over.json()) as any).error, /saved answers still work/);
+    assert.equal((await worker.fetch(post("/api/venue", body), env(kv.kv))).status, 200, "a saved answer still works past the limit");
+  } finally {
+    m.restore();
+    delete (globalThis as any).caches;
+  }
+});
+
+test("both MCP tools tell the agent to ask the person when a name was only a closest match", async () => {
+  const headers = { "content-type": "application/json", accept: "application/json, text/event-stream", "mcp-protocol-version": "2025-06-18" };
+  const list = await (await worker.fetch(new Request("https://booker.test/mcp", { method: "POST", headers, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }) }), env())).text();
+  assert.equal(list.match(/ask the person which one they meant/g)?.length, 2);
+});
+
+test("the map keeps Leaflet's own zoom listener, and a late answer can't land on the other tab", () => {
+  assert.doesNotMatch(page, /map\.off\("zoomend"\)/);
+  assert.match(page, /const mine = \+\+current;/);
+  assert.equal(page.match(/if \(mine !== current\) return;/g)?.length, 2);
+  assert.match(page, /current\+\+; document\.querySelectorAll\("\.go"\)/);
+  assert.match(page, /progress\(steps, 0\);/, "no step is shown done before the answer arrives");
+});

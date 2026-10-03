@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
   "description": "Booker: taste-matched booking for independent live music venues and the artists who play them, grounded in Qloo's taste graph.",
   "license": "MIT",
   "scripts": {

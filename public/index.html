@@ -151,7 +151,10 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const f2 = (n) => (n === undefined || n === null ? "?" : Number(n).toFixed(2));
 const f3 = (n) => (n === undefined || n === null ? "?" : Number(n).toFixed(3));
 $("mcpUrl").textContent = `${location.origin}/mcp`;
-let map = null, layer = null;
+let map = null, layer = null, topRooms = [];
+// Each search gets a number; an answer that arrives after another search started, or after a tab switch,
+// is dropped (otherwise a venue answer could land under the artist form).
+let current = 0;
 
 fetch("/api/status").then((r) => r.json()).then((s) => {
   if (!s.qloo) { $("banner").hidden = false; $("banner").textContent = "Live Qloo access is being set up. Searches will work as soon as the API key is active."; }
@@ -162,6 +165,7 @@ const intro = $("results").innerHTML;
 function tab(which) {
   const venue = which === "venue";
   if ($("tabVenue").getAttribute("aria-selected") !== String(venue)) {
+    current++; document.querySelectorAll(".go").forEach((b) => (b.disabled = false));
     $("results").innerHTML = intro; $("side").innerHTML = ""; $("progress").hidden = true; $("map").hidden = true;
   }
   $("tabVenue").setAttribute("aria-selected", String(venue)); $("tabArtist").setAttribute("aria-selected", String(!venue));
@@ -172,7 +176,8 @@ $("tabArtist").onclick = () => tab("artist");
 $("venueChips").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; $("venue").value = c.dataset.venue; $("acts").value = c.dataset.acts; $("pitches").value = c.dataset.pitches; });
 $("artistChips").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; $("artist").value = c.dataset.artist; $("cities").value = c.dataset.cities; });
 
-// Real progress: the steps are the ones the server runs; they turn done when the answer arrives.
+// Real progress: the steps are the ones the server runs; they all turn done when the answer arrives, and
+// none does if it stops.
 function progress(steps, step, failed = false) {
   $("progress").hidden = false;
   $("progressTitle").textContent = failed ? "Stopped" : step >= steps.length ? "Done" : "Working on it";
@@ -182,19 +187,22 @@ const VENUE_STEPS = ["Finding your venue and your acts in Qloo", "Asking Qloo wh
 const ARTIST_STEPS = ["Finding the artist in Qloo", "Scoring each city and finding the rooms that fit"];
 
 async function post(path, body, steps, render) {
+  const mine = ++current;
   document.querySelectorAll(".go").forEach((b) => (b.disabled = true));
   $("results").innerHTML = ""; $("side").innerHTML = ""; $("map").hidden = true;
-  progress(steps, 1);
+  progress(steps, 0);
   try {
     const r = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const d = await r.json().catch(() => ({ error: "The server's answer couldn't be read. Please try again." }));
-    if (d.error) { progress(steps, 1, true); $("results").innerHTML = `<div class="card"><b>Couldn't finish.</b> ${esc(d.error)}</div>`; return; }
+    if (mine !== current) return;
+    if (d.error) { progress(steps, 0, true); $("results").innerHTML = `<div class="card"><b>Couldn't finish.</b> ${esc(d.error)}</div>`; return; }
     progress(steps, steps.length);
     render(d, body);
   } catch {
-    progress(steps, 1, true);
+    if (mine !== current) return;
+    progress(steps, 0, true);
     $("results").innerHTML = `<div class="card">Something went wrong. Please try again.</div>`;
-  } finally { document.querySelectorAll(".go").forEach((b) => (b.disabled = false)); }
+  } finally { if (mine === current) document.querySelectorAll(".go").forEach((b) => (b.disabled = false)); }
 }
 
 $("goVenue").onclick = () => post("/api/venue", { venue: $("venue").value, acts: $("acts").value, pitches: $("pitches").value, rising: $("rising").checked }, VENUE_STEPS, renderVenue);
@@ -289,15 +297,18 @@ function renderArtist(d) {
     ${howWeKnow(d)}`;
   // The map: every room, colored by how well it fits.
   $("map").hidden = false;
-  if (!map) { map = L.map("map", { scrollWheelZoom: false }); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap contributors" }).addTo(map); layer = L.layerGroup().addTo(map); }
+  if (!map) {
+    map = L.map("map", { scrollWheelZoom: false }); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap contributors" }).addTo(map); layer = L.layerGroup().addTo(map);
+    // Registered once: turning zoomend off without naming a listener would also remove Leaflet's own,
+    // which redraws the circles at the new zoom.
+    map.on("zoomend", () => topRooms.forEach((m) => (map.getZoom() >= 11 ? m.openTooltip() : m.closeTooltip())));
+  }
   layer.clearLayers();
   const pts = [];
   // Each city's top three rooms are named on the map once it is zoomed into a city (zoomed out, the
   // names of one city would pile up on one spot).
-  const top = [];
-  d.cities.forEach((c) => c.rooms.forEach((r, i) => { if (r.lat && r.lon) { pts.push([r.lat, r.lon]); const m = L.circleMarker([r.lat, r.lon], { radius: 4 + 6 * ((r.affinity ?? 0) / maxRoom), color: "#ff6a3d", fillOpacity: 0.85 }).bindTooltip(`${esc(r.name)} (${esc(c.label.split(",")[0])})`, { direction: "top" }).addTo(layer); if (i < 3) top.push(m); } }));
-  const names = () => top.forEach((m) => (map.getZoom() >= 11 ? m.openTooltip() : m.closeTooltip()));
-  map.off("zoomend"); map.on("zoomend", names);
+  topRooms = [];
+  d.cities.forEach((c) => c.rooms.forEach((r, i) => { if (r.lat && r.lon) { pts.push([r.lat, r.lon]); const m = L.circleMarker([r.lat, r.lon], { radius: 4 + 6 * ((r.affinity ?? 0) / maxRoom), color: "#ff6a3d", fillOpacity: 0.85 }).bindTooltip(`${esc(r.name)} (${esc(c.label.split(",")[0])})`, { direction: "top" }).addTo(layer); if (i < 3) topRooms.push(m); } }));
   map.invalidateSize();
   if (pts.length) map.fitBounds(pts, { padding: [30, 30], maxZoom: 12 });
   document.querySelectorAll(".city").forEach((el) => {

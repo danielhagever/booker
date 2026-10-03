@@ -61,15 +61,23 @@ export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | 
   };
 }
 
-// A place counts as a music room if Qloo files it as one (categories measured on Qloo place records).
+// A place counts as a room if Qloo files it as a music venue, a theater, or a bar or club where small
+// shows happen (categories measured on Qloo place records); golf, country and health clubs don't.
 const ROOM = /\b(live music|concert hall|music venue|night ?club|jazz club|event venue|performing arts theater|theater|theatre|amphitheater|auditorium|bar|pub|lounge|club)\b/i;
-export const isRoom = (e: Entity) => (e.categories ?? []).some((c) => ROOM.test(c));
+const NOT_ROOM = /\b(golf|country club|health club|fitness|gym|tennis|yacht|swim|athletic|sports club)\b/i;
+const MUSIC = /\b(live music|concert hall|music venue|jazz club|night ?club)\b/i;
+export const isRoom = (e: Entity) => {
+  const cats = e.categories ?? [];
+  return cats.some((c) => ROOM.test(c)) && (cats.some((c) => MUSIC.test(c)) || !cats.some((c) => NOT_ROOM.test(c)));
+};
+const musicFirst = (a: Entity, b: Entity) => Number((b.categories ?? []).some((c) => MUSIC.test(c))) - Number((a.categories ?? []).some((c) => MUSIC.test(c)));
 
 // Venues: "The Empty Bottle, Chicago". The whole text goes to Qloo's place search (the city helps it);
 // the name part (before the comma) decides exact or closest.
 export async function resolveVenue(q: Qloo, input: string): Promise<Resolved | null> {
   const name = input.split(",")[0].trim();
-  const found = (await q.search(input.replace(/,/g, " "), "urn:entity:place", 8)).filter(isRoom);
+  // Among places with the same name, one Qloo files as a music venue comes first (stable otherwise).
+  const found = (await q.search(input.replace(/,/g, " "), "urn:entity:place", 8)).filter(isRoom).sort(musicFirst);
   const exact = found.filter((e) => nameKey(e.name) === nameKey(name) || nameKey(e.name).startsWith(nameKey(name) + " "));
   const list = found.filter((e) => exact.includes(e) || resembles(name, e.name));
   if (!list.length) return null;

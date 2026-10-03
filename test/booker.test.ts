@@ -245,3 +245,37 @@ test("taste is judged with room for a near genre: 0.07 below Qloo's picks still 
   assert.equal(v["Beach House"], "bigger", "dream pop next to indie rock is the same crowd; it's the size that doesn't fit");
   assert.equal(v["Turnpike Troubadours"], "off-taste");
 });
+
+test("size limits go to Qloo with 4 decimals, rounded outward, so the widening survives near 1", async () => {
+  const { r, calls } = await run({ acts: [{ name: "Skrillex" }] });
+  const fit = calls.find((c) => c.path === "/v2/insights" && c.params.get("filter.popularity.max") && !c.params.get("filter.results.entities"))!;
+  // A 0.999 act widened one step is 0.99921: with 3 decimals that was "0.999", the act's own size.
+  assert.equal(fit.params.get("filter.popularity.max"), "0.9993");
+  assert.equal(fit.params.get("filter.popularity.min"), "0.9987");
+  assert.ok(r.trace.some((t) => t.step === "Size" && /0\.9987 to 0\.9993/.test(t.detail)));
+});
+
+test("the yardstick skips Qloo's picks that are themselves pitches; with no picks at all, taste isn't judged", async () => {
+  const { r } = await run({ pitches: ["Soccer Mommy", "Slow Pulp", "Dehd"].map((name) => ({ name })) });
+  assert.ok(r.trace.some((t) => t.step === "Inbox" && /next to 3 of Qloo's picks/.test(t.detail)), "the openers stand in when every fit was pitched");
+  const m = mockFetch((c) => (insights(c, "urn:entity:artist") && !c.params.get("filter.results.entities") ? { body: { results: { entities: [] } } } : standardQloo()(c)));
+  try {
+    const bare = await forVenue(ENV(memoryKV().kv), new Budget(48), { venue: { name: "Empty Bottle, Chicago" }, acts: PAST.map((a) => ({ name: a.name })), pitches: [{ name: "Skrillex" }, { name: "Dehd" }], rising: false });
+    assert.deepEqual(bare.inbox.map((p) => p.verdict), ["unscored", "unscored"]);
+    assert.match(bare.inbox[0].why, /taste isn't judged/);
+  } finally {
+    m.restore();
+  }
+});
+
+test("the same act named twice is counted once, and the trace says why", async () => {
+  const { r } = await run({ acts: [{ name: "Wednesday" }, { name: "snail male" }, { name: "Snail Mail" }] });
+  assert.equal(r.acts.length, 2);
+  assert.ok(r.trace.some((t) => t.step === "Your acts" && /2 of 3 matched in Qloo; the same act named twice: Snail Mail/.test(t.detail)));
+});
+
+test("rooms: bars and music venues count; golf, country and health clubs don't", () => {
+  const room = (...categories: string[]) => isRoom({ id: "x", name: "x", types: [], categories });
+  assert.ok(room("Wine bar") && room("Pub") && room("Bowling alley", "Live music venue"));
+  assert.ok(!room("Golf club") && !room("Golf club", "Bar") && !room("Country club") && !room("Health club"));
+});

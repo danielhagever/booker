@@ -5,7 +5,7 @@
 
 import { AppError, type Budget } from "./limits.ts";
 import { Qloo, QlooError, type Entity, type QlooEnv } from "./qloo.ts";
-import { resolveArtist, resolveChosen, resolveVenue, type Choice, type Resolved } from "./resolve.ts";
+import { nameKey, resolveArtist, resolveChosen, resolveVenue, type Choice, type Resolved } from "./resolve.ts";
 import { cityCenter, km } from "./geo.ts";
 
 export interface Named {
@@ -100,7 +100,7 @@ const candidate = (e: Entity): Candidate => ({
 // Errors that mean "this one name isn't in Qloo"; anything else stops the search with its real message.
 const notFound = (e: unknown) => e instanceof AppError && (e.status === 400 || e.status === 404);
 
-async function resolveArtists(q: Qloo, names: Named[]): Promise<{ found: Resolved[]; missing: string[] }> {
+async function resolveArtists(q: Qloo, names: Named[]): Promise<{ found: Resolved[]; missing: string[]; same: string[] }> {
   const out = await Promise.all(
     names.map((n) =>
       (n.id ? resolveChosen(q, n.name, n.id) : resolveArtist(q, n.name)).catch((e) => {
@@ -111,12 +111,15 @@ async function resolveArtists(q: Qloo, names: Named[]): Promise<{ found: Resolve
   );
   const found: Resolved[] = [];
   const missing: string[] = [];
+  const same: string[] = []; // "Black Angels" when "The Black Angels" was already named: one act, counted once
   out.forEach((r, i) => {
     if (!r) missing.push(names[i].name);
-    else if (!found.some((f) => f.entity.id === r.entity.id)) found.push(r);
+    else if (found.some((f) => f.entity.id === r.entity.id)) same.push(nameKey(names[i].name) === nameKey(r.entity.name) ? r.entity.name : `${names[i].name} (${r.entity.name})`);
+    else found.push(r);
   });
-  return { found, missing };
+  return { found, missing, same };
 }
+const twice = (same: string[]) => (same.length ? `; the same act named twice: ${same.join(", ")}` : "");
 
 // The city Qloo is asked about, spelled out the way it resolves (measured: "Chicago, Illinois",
 // "Portland, Maine", "Berlin, Germany"; a US or Canadian city with its state or province).
@@ -128,6 +131,11 @@ export function cityOf(e: Entity): string | undefined {
 
 const fmt = (n?: number) => (n === undefined ? "?" : n.toFixed(2));
 const fmt3 = (n?: number) => (n === undefined ? "?" : n.toFixed(3)); // popularity near 1 needs the third digit
+const fmt4 = (n?: number) => (n === undefined ? "?" : n.toFixed(4));
+// Size limits are rounded outward to 4 decimals: the numbers Qloo is sent (with 3, the widening above
+// 0.997 rounded away, and above 0.9995 the top limit became 1) are the numbers the inbox is judged by.
+const down4 = (x: number) => Math.floor(x * 1e4) / 1e4;
+const up4 = (x: number) => Math.ceil(x * 1e4) / 1e4;
 
 // Qloo's popularity is a percentile and bunches up near 1: 0.98 and 0.99 are clubs and theaters apart
 // (measured: 100-300 cap acts 0.35-0.55, 300-800 cap 0.90-0.97, theaters 0.98-0.99). Sizes are compared on
@@ -164,20 +172,20 @@ export async function forVenue(
   const actIds = acts.map((a) => a.entity.id);
   trace.push({
     step: "Your acts",
-    detail: `${acts.length} of ${input.acts.length} matched in Qloo${actsR.missing.length ? `; not found: ${actsR.missing.join(", ")}` : ""}`,
+    detail: `${acts.length} of ${input.acts.length} matched in Qloo${actsR.missing.length ? `; not found: ${actsR.missing.join(", ")}` : ""}${twice(actsR.same)}`,
   });
 
   // 2. Size: the popularity range of the acts that did well here (Booker's rule). A room's crowd is
   // measured by what it already drew, not by a guess about capacity.
   const pops = acts.map((a) => a.entity.popularity).filter((p): p is number => p !== undefined);
   const band = pops.length ? { min: Math.min(...pops), max: Math.max(...pops) } : undefined;
-  const fitsMin = band ? fromSize(Math.max(0, sizeOf(band.min) - WIDEN)) : undefined;
-  const fitsMax = band ? fromSize(sizeOf(band.max) + WIDEN) : undefined;
+  const fitsMin = band ? down4(fromSize(Math.max(0, sizeOf(band.min) - WIDEN))) : undefined;
+  const fitsMax = band ? up4(fromSize(sizeOf(band.max) + WIDEN)) : undefined;
   const openersMax = fitsMin !== undefined && fitsMin > 0.15 ? fitsMin : undefined;
   trace.push({
     step: "Size",
     detail: band
-      ? `Your acts sit between ${fmt3(band.min)} and ${fmt3(band.max)} on Qloo's popularity scale; acts that fit are looked for in ${fmt3(fitsMin)} to ${fmt3(fitsMax)}, openers below ${fmt3(openersMax)}`
+      ? `Your acts sit between ${fmt3(band.min)} and ${fmt3(band.max)} on Qloo's popularity scale; acts that fit are looked for in ${fmt4(fitsMin)} to ${fmt4(fitsMax)}, openers below ${fmt4(openersMax)}`
       : "Qloo gave no popularity for your acts, so size isn't filtered",
   });
 
@@ -201,7 +209,7 @@ export async function forVenue(
   };
   let fits = (await ask({ entities: actIds, popMin: fitsMin, popMax: fitsMax, exclude: actIds, rising: input.rising, take: 12 })).map(candidate);
   if (!fits.length && fitsMin !== undefined) {
-    fits = (await ask({ entities: actIds, popMin: fromSize(Math.max(0, sizeOf(fitsMin) - WIDEN)), popMax: fitsMax, exclude: actIds, rising: input.rising, take: 12 })).map(candidate);
+    fits = (await ask({ entities: actIds, popMin: down4(fromSize(Math.max(0, sizeOf(fitsMin) - WIDEN))), popMax: fitsMax, exclude: actIds, rising: input.rising, take: 12 })).map(candidate);
     trace.push({ step: "Size", detail: "Nothing in that range, so it was widened one more step below" });
   }
   const openers = openersMax === undefined ? [] : (await ask({ entities: actIds, popMax: openersMax, exclude: actIds, rising: input.rising, take: 8 })).map(candidate).filter((o) => !fits.some((f) => f.id === o.id));
@@ -251,7 +259,10 @@ export async function forVenue(
     const p = await resolveArtists(q, input.pitches);
     // Scored by taste alone: with the city as a signal Qloo leaves some artists out (measured). Three of
     // Qloo's own picks for this crowd are scored in the same call as a yardstick.
-    const refs = fits.slice(0, 3).map((f) => f.id).filter((id) => !p.found.some((r) => r.entity.id === id));
+    // When a top pick is itself a pitch, the next pick stands in (the openers if no fit is left); with no
+    // picks at all, taste isn't judged.
+    const unpitched = (c: Candidate) => !p.found.some((r) => r.entity.id === c.id);
+    const refs = (fits.some(unpitched) ? fits : openers).filter(unpitched).slice(0, 3).map((c) => c.id);
     const ids = [...p.found.map((r) => r.entity.id), ...refs];
     const scored = p.found.length ? (await q.artists({ entities: actIds, only: ids, take: ids.length })).list : [];
     // Taste floor (Booker's rule): more than 0.09 below the yardstick isn't your crowd's taste. Set from
@@ -259,7 +270,7 @@ export async function forVenue(
     // Antone's, Beach House at the Bowery), clear misses 0.102-0.164 below (Morgan Wallen at Mohawk, Bad
     // Bunny at the Bowery, Black Pumas at Antone's, Turnpike Troubadours at the Empty Bottle).
     const refAff = scored.filter((x) => refs.includes(x.id)).map((x) => x.affinity).filter((a): a is number => a !== undefined);
-    const floor = (refAff.length ? Math.min(...refAff) : 0.95) - TASTE_GAP;
+    const floor = refAff.length ? Math.min(...refAff) - TASTE_GAP : undefined;
     for (const r of p.found) {
       const s = scored.find((x) => x.id === r.entity.id);
       const pop = r.entity.popularity;
@@ -269,6 +280,9 @@ export async function forVenue(
       if (aff === undefined) {
         verdict = "unscored";
         why = "Qloo gave no score for them with your acts";
+      } else if (floor === undefined) {
+        verdict = "unscored";
+        why = `Fans of your acts score them ${fmt(aff)}, but Qloo had no picks of its own to compare with, so taste isn't judged`;
       } else if (aff < floor) {
         verdict = "off-taste";
         why = `Your crowd's taste is elsewhere: ${fmt(aff)}, below ${fmt(floor)}`;
@@ -286,7 +300,7 @@ export async function forVenue(
     for (const m of p.missing) inbox.push({ input: m, name: m, id: "", match: "closest", alternatives: [], verdict: "unscored", why: "Not found in Qloo" });
     trace.push({
       step: "Inbox",
-      detail: `Scored ${p.found.length} pitches against your acts, next to ${refAff.length} of Qloo's picks as a yardstick (taste floor ${fmt(floor)})${p.missing.length ? `; not found: ${p.missing.join(", ")}` : ""}`,
+      detail: `Scored ${p.found.length} pitches against your acts, ${floor === undefined ? "with none of Qloo's picks to compare with (taste not judged)" : `next to ${refAff.length} of Qloo's picks as a yardstick (taste floor ${fmt(floor)})`}${p.missing.length ? `; not found: ${p.missing.join(", ")}` : ""}${twice(p.same)}`,
     });
   }
 
@@ -336,7 +350,7 @@ export async function forVenue(
       "The closest act of yours is the one whose fans give the candidate the highest Qloo affinity (your first four acts are compared).",
       "A bill pairs one of the top three acts with the opener whose fans overlap most; each opener is used once.",
       ...(input.pitches.length
-        ? ["A pitch is off your crowd's taste when its affinity is more than 0.09 below three of Qloo's picks for your crowd, scored in the same call (set from live pitches at four rooms); bigger or smaller compares its popularity with the range above."]
+        ? ["A pitch is off your crowd's taste when its affinity is more than 0.09 below the lowest of three of Qloo's picks for your crowd (ones you didn't pitch), scored in the same call (set from live pitches at four rooms); bigger or smaller compares its popularity with the range above."]
         : []),
     ],
     limits: [
@@ -422,6 +436,7 @@ export async function forArtist(
     ours: ["Cities are ordered by Qloo's affinity for the act there; a city Qloo has no score for comes last."],
     limits: [
       "Qloo measures taste, not capacity, fees or availability: check that a room's size fits before you pitch it.",
+      "Rooms are the places Qloo tags as live music venues or concert halls; a few are record stores, cafés or arts spaces that host shows.",
       "A city's score compares the act with everything that city likes; it is a relative signal, not a ticket forecast.",
     ],
     degraded: false,

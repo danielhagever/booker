@@ -12,8 +12,10 @@ export interface Env {
   ASSETS: Fetcher;
 }
 
-// Per address, per hour, to protect the shared event quota.
+// New searches per address, per hour, for each of the venue search, the artist search and the MCP tools,
+// to protect the shared event quota. An answer from the day's cache doesn't count.
 const LIMITS = { venue: 20, artist: 20, mcp: 20 };
+const TOO_MANY = "Too many new searches from this address in the last hour (saved answers still work). Please try again later.";
 
 const json = (d: unknown, status = 200) =>
   new Response(JSON.stringify(d), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
@@ -25,7 +27,7 @@ const failure = (e: unknown) => {
 };
 
 // Bump whenever the pipeline or the result format changes, so no one gets yesterday's logic.
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 
 async function sha(s: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -36,8 +38,16 @@ async function sha(s: string): Promise<string> {
 }
 
 // Identical requests are answered from a day's cache (the page says so: the timings in "How we know"
-// are from the run that made it). A result where an optional step failed isn't kept.
-async function cached<T extends { degraded: boolean }>(env: Env, budget: Budget, kind: string, input: unknown, run: () => Promise<T>): Promise<T & { cached?: boolean }> {
+// are from the run that made it). A result where an optional step failed isn't kept. Only a new search
+// passes the rate limit (`gate`).
+async function cached<T extends { degraded: boolean }>(
+  env: Env,
+  budget: Budget,
+  kind: string,
+  input: unknown,
+  run: () => Promise<T>,
+  gate: () => Promise<boolean>,
+): Promise<T & { cached?: boolean }> {
   const key = `${kind}${CACHE_VERSION}:` + (await sha(JSON.stringify(input).toLowerCase()));
   if (budget.take()) {
     try {
@@ -47,6 +57,7 @@ async function cached<T extends { degraded: boolean }>(env: Env, budget: Budget,
       // A cache miss is fine.
     }
   }
+  if (!(await gate())) throw new AppError(TOO_MANY, 429);
   const r = await run();
   if (!r.degraded && budget.take()) {
     try {
@@ -126,10 +137,9 @@ function artistInput(body: any) {
 function buildServer(env: Env, req: Request): McpServer {
   const server = new McpServer({ name: "booker", version: "0.1.0", title: "Booker: taste-matched booking for independent venues" });
   const named = z.union([z.string().min(1).max(MAX_NAME), z.object({ name: z.string().min(1).max(MAX_NAME), id: z.string().max(40).optional() })]);
-  const limited = async <T>(fn: (budget: Budget) => Promise<T>) => {
+  const limited = async <T>(fn: (budget: Budget, gate: () => Promise<boolean>) => Promise<T>) => {
     const budget = new Budget(REQUEST_BUDGET);
-    if (!(await allow(req, "mcp", LIMITS.mcp, budget))) throw new AppError("Too many searches from this address in the last hour. Please try again later.", 429);
-    return fn(budget);
+    return fn(budget, () => allow(req, "mcp", LIMITS.mcp, budget));
   };
   server.registerTool(
     "find_acts_for_venue",
@@ -147,10 +157,10 @@ function buildServer(env: Env, req: Request): McpServer {
     },
     async (args) => {
       try {
-        return await limited(async (budget) => {
+        return await limited(async (budget, gate) => {
           const input = venueInput(args);
           if (input.venue.name.length < 2) throw new AppError("Name the venue and its city.", 400);
-          const r = await cached(env, budget, "venue", { v: input.venue, a: input.acts, p: input.pitches, r: input.rising }, () => forVenue(env, budget, input));
+          const r = await cached(env, budget, "venue", { v: input.venue, a: input.acts, p: input.pitches, r: input.rising }, () => forVenue(env, budget, input), gate);
           const s = venueSummary(r);
           const notes = caveats(r);
           return { content: [{ type: "text" as const, text: notes ? `${s}\n\n${notes}` : s }], structuredContent: { spoken: s, ...r } };
@@ -165,7 +175,7 @@ function buildServer(env: Env, req: Request): McpServer {
     {
       title: "Find the cities and rooms that fit an artist",
       description:
-        "For an artist, manager or booking agent planning shows: given an artist and up to 5 cities, ranks the cities by Qloo's affinity for the artist there and lists the live music venues and concert halls in each whose visitors' taste fits the artist's fans. Cities need their state or country, e.g. 'Austin, Texas'. Qloo knows taste, not capacity or availability.",
+        "For an artist, manager or booking agent planning shows: given an artist and up to 5 cities, ranks the cities by Qloo's affinity for the artist there and lists the live music venues and concert halls in each whose visitors' taste fits the artist's fans. Cities need their state or country, e.g. 'Austin, Texas'. Qloo knows taste, not capacity or availability. If the artist was only a closest match, the result lists alternatives with Qloo IDs: ask the person which one they meant, then call again with that id.",
       inputSchema: z.object({
         artist: named.describe("The artist, by name as Qloo knows it, or {name, id}"),
         cities: z.array(z.string().min(2).max(MAX_NAME)).min(1).max(MAX_CITIES).describe("Cities with their state or country"),
@@ -174,9 +184,9 @@ function buildServer(env: Env, req: Request): McpServer {
     },
     async (args) => {
       try {
-        return await limited(async (budget) => {
+        return await limited(async (budget, gate) => {
           const input = artistInput(args);
-          const r = await cached(env, budget, "artist", { a: input.artist, c: input.cities }, () => forArtist(env, budget, input));
+          const r = await cached(env, budget, "artist", { a: input.artist, c: input.cities }, () => forArtist(env, budget, input), gate);
           const s = tourSummary(r);
           const notes = caveats(r);
           return { content: [{ type: "text" as const, text: notes ? `${s}\n\n${notes}` : s }], structuredContent: { spoken: s, ...r } };
@@ -199,9 +209,8 @@ export default {
       const input = venueInput(await req.json().catch(() => null));
       if (input.venue.name.length < 2 || !input.acts.length) return json({ error: "Name your venue with its city, and at least one act that did well there." }, 400);
       const budget = new Budget(REQUEST_BUDGET);
-      if (!(await allow(req, "venue", LIMITS.venue, budget))) return json({ error: "Too many searches from this address in the last hour. Please try again later." }, 429);
       try {
-        const r = await cached(env, budget, "venue", { v: input.venue, a: input.acts, p: input.pitches, r: input.rising }, () => forVenue(env, budget, input));
+        const r = await cached(env, budget, "venue", { v: input.venue, a: input.acts, p: input.pitches, r: input.rising }, () => forVenue(env, budget, input), () => allow(req, "venue", LIMITS.venue, budget));
         return json({ ...r, summary: venueSummary(r), leftOut: input.leftOut });
       } catch (e) {
         const f = failure(e);
@@ -212,9 +221,8 @@ export default {
       const input = artistInput(await req.json().catch(() => null));
       if (input.artist.name.length < 1 || !input.cities.length) return json({ error: "Name the artist and at least one city." }, 400);
       const budget = new Budget(REQUEST_BUDGET);
-      if (!(await allow(req, "artist", LIMITS.artist, budget))) return json({ error: "Too many searches from this address in the last hour. Please try again later." }, 429);
       try {
-        const r = await cached(env, budget, "artist", { a: input.artist, c: input.cities }, () => forArtist(env, budget, input));
+        const r = await cached(env, budget, "artist", { a: input.artist, c: input.cities }, () => forArtist(env, budget, input), () => allow(req, "artist", LIMITS.artist, budget));
         return json({ ...r, summary: tourSummary(r), leftOut: input.leftOut });
       } catch (e) {
         const f = failure(e);

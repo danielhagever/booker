@@ -14,7 +14,7 @@ The other side has the same problem in reverse: an artist or agent routing a tou
 
 **For a venue** ("I book a venue"): name the venue with its city and the acts that did well there; optionally paste the acts pitching you.
 
-1. **Finds the room and the acts in Qloo.** The venue is a Qloo place (only places Qloo files as music rooms count); each act is resolved the way Qloo's harness does, an exact name first, a near-miss only if it resembles what was typed, and "Not it?" lets you pick another candidate by its Qloo ID.
+1. **Finds the room and the acts in Qloo.** The venue is a Qloo place filed as a music venue, a theater, or a bar or club where shows happen (a record store, a restaurant or a golf club with the same name doesn't count); each act is resolved the way Qloo's harness does, an exact name first, a near-miss only if it resembles what was typed, and "Not it?" lets you pick another candidate by its Qloo ID.
 2. **Measures your room's size from your own history.** The acts you named have a Qloo popularity; that range is your room's size. Qloo's popularity bunches up near 1 (100-300 capacity acts sit around 0.35-0.55, 300-800 capacity clubs around 0.90-0.97, theaters at 0.98-0.99, measured), so sizes are compared on a log scale.
 3. **Ranks acts that fit**: artists the fans of your acts love (Qloo affinity), at your size, with your city as a signal, without your own acts. **Openers and next-up acts** come from the same crowd below your range.
 4. **Explains each pick**: the act of yours whose fans like it most.
@@ -47,7 +47,7 @@ Streaming dashboards say how big an act is. Qloo says whose fans overlap with wh
 | Rooms that fit an act | `GET /v2/insights?filter.type=urn:entity:place&filter.tags=urn:tag:category:place:live_music_venue,urn:tag:category:place:concert_hall&operator.filter.tags=union&filter.location.query=<city>&signal.interests.entities=<act>` | Venues whose visitors' taste fits the act |
 | A city's taste for an act | `GET /v2/insights?filter.type=urn:entity:artist&signal.location.query=<city>&filter.results.entities=<act>` | Rank the cities on a route |
 
-A venue search makes about 20 Qloo calls in about 9 seconds; an artist search with four cities about 9 calls. Calls are paced one every 340 ms with one bounded retry after a 429 (Qloo rejects the sixth call within about a second, measured), every external call is counted against Cloudflare's free-plan limit of 50 per request, results are cached for a day, and each address gets 20 searches an hour.
+A venue search makes about 20 Qloo calls in about 9 seconds; an artist search with four cities about 9 calls. Calls are paced one every 340 ms with one bounded retry after a 429 (Qloo rejects the sixth call within about a second, measured), every external call is counted against Cloudflare's free-plan limit of 50 per request, results are cached for a day, and each address gets 20 new searches an hour on each of the venue search, the artist search and the MCP tools (answers from the day's cache don't count).
 
 ### What the live API taught us (measured 2026-10-03, scripts in `scripts/`)
 
@@ -95,11 +95,11 @@ When a name was only a closest match, the tool's answer says so and lists the al
 - In the artist view, Qloo knows each room's taste, not its capacity: check that a room's size fits before pitching it.
 - "What Qloo says your room's visitors like" is Qloo's view of people who like the venue, which can differ from who buys tickets.
 - Names that aren't an exact Qloo name are used only if they resemble what was typed; anything else is reported as not found.
-- Results are cached for a day per identical request, and each address can run 20 searches an hour, to respect the shared event quota. No personal data is sent to Qloo: only names of artists, venues and cities.
+- Results are cached for a day per identical request, and each address can run 20 new searches an hour per search type, to respect the shared event quota. No personal data is sent to Qloo: only names of artists, venues and cities.
 
 ## Run it yourself
 
-You need Node.js 22 or newer and a free Cloudflare account (Workers and KV are on the free plan).
+You need Node.js 22.18 or newer (it runs the TypeScript files directly) and a free Cloudflare account (Workers and KV are on the free plan).
 
 ```bash
 git clone https://github.com/danielhagever/booker && cd booker

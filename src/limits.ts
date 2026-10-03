@@ -37,7 +37,7 @@ export async function fetchWithTimeout(url: string, init: RequestInit, ms: numbe
 }
 
 // A per-address, per-hour counter in the edge cache. Approximate (per data center), which is enough
-// to stop a script from spending the Qloo quota or the Workers AI allowance.
+// to stop a script from spending the shared Qloo quota.
 export async function allow(req: Request, what: string, perHour: number, budget?: Budget): Promise<boolean> {
   const cache = (globalThis as any).caches?.default as Cache | undefined;
   if (!cache) return true;
