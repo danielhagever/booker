@@ -57,15 +57,67 @@ async function kvPut(cache: KVNamespace, budget: Budget, key: string, value: unk
 // "Portland, Maine", "Portland, ME" and "Portland, Oregon" must each land on the right Portland:
 // fetch several candidates and prefer the one whose state or country matches what came after the
 // comma; otherwise take the most populous.
+// Typed forms that Open-Meteo doesn't know by that name.
+const ALIASES: Record<string, string> = {
+  dc: "Washington, DC", "washington dc": "Washington, DC", cdmx: "Mexico City", "ciudad de mexico": "Mexico City",
+  "quebec city": "Quebec, QC", "tel aviv-yafo": "Tel Aviv", "tel aviv yafo": "Tel Aviv",
+};
+// Newspaper (AP) state abbreviations, dots dropped ("Paris, Tex.", "Springfield, Ill.").
+const US_AP: Record<string, string> = {
+  ala: "Alabama", ariz: "Arizona", ark: "Arkansas", calif: "California", colo: "Colorado", conn: "Connecticut", del: "Delaware",
+  fla: "Florida", ill: "Illinois", ind: "Indiana", kan: "Kansas", kans: "Kansas", mass: "Massachusetts", mich: "Michigan",
+  minn: "Minnesota", miss: "Mississippi", mont: "Montana", neb: "Nebraska", nebr: "Nebraska", nev: "Nevada", okla: "Oklahoma",
+  ore: "Oregon", oreg: "Oregon", penn: "Pennsylvania", tenn: "Tennessee", tex: "Texas", wash: "Washington", wis: "Wisconsin",
+  wyo: "Wyoming", wva: "West Virginia",
+};
+// Countries as people write them in their own language.
+const ENDONYMS: Record<string, string> = {
+  brasil: "Brazil", deutschland: "Germany", espana: "Spain", italia: "Italy", osterreich: "Austria", schweiz: "Switzerland",
+  suisse: "Switzerland", nederland: "Netherlands", sverige: "Sweden", norge: "Norway", danmark: "Denmark", polska: "Poland",
+  eire: "Ireland", mexico: "Mexico", "great britain": "United Kingdom", britain: "United Kingdom",
+};
+const fold = (s: unknown) => String(s ?? "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/\./g, "").replace(/\s+/g, " ").trim();
+// What a region word can mean: "tx" Texas, "on" Ontario, "wa" Washington or Western Australia.
+const regionNames = (part: string) =>
+  [part, US_STATES[part], US_AP[part], ...(OTHER_REGIONS[part] ?? []), ENDONYMS[part]].filter(Boolean).map((x) => fold(x));
+const KNOWN_REGIONS = new Set([
+  ...Object.keys(US_STATES), ...Object.values(US_STATES).map(fold), ...Object.keys(US_AP), ...Object.keys(OTHER_REGIONS),
+  ...Object.values(OTHER_REGIONS).flat().map(fold), ...Object.keys(COUNTRY_WORDS), ...Object.keys(ENDONYMS),
+  "canada", "australia", "germany", "france", "spain", "italy", "ireland", "netherlands", "japan", "mexico", "brazil", "israel",
+]);
+// "St. Paul", "Saint Paul" and "St Paul" are one place to a person, but Open-Meteo knows one spelling.
+function spellings(name: string): string[] {
+  const m = name.match(/^(st|saint|ste|sainte|ft|fort|mt|mount)\.?\s+(.+)$/i);
+  if (!m) return [name];
+  const head = m[1].toLowerCase();
+  const forms = ["st", "saint"].includes(head) ? ["St.", "Saint"] : ["ste", "sainte"].includes(head) ? ["Ste.", "Sainte"] : ["ft", "fort"].includes(head) ? ["Fort", "Ft."] : ["Mount", "Mt."];
+  return [name, ...forms.map((f) => `${f} ${m[2]}`).filter((x) => fold(x) !== fold(name))];
+}
+
 export async function cityCenter(cache: KVNamespace, budget: Budget, city: string): Promise<Place | null> {
-  const key = `city5:${city.toLowerCase()}`;
+  const key = `city6:${city.toLowerCase()}`;
   const hit = await kvGet(cache, budget, key);
   if (hit) return hit as Place;
-  const [name, ...rest] = city.split(",").map((x) => x.trim());
+  const typed = ALIASES[fold(city)] ?? city;
+  let [name, ...rest] = typed.split(",").map((x) => x.trim());
   if (!name) return null;
+  // Without a comma the state or country may close the text: "Austin TX", "Portland Maine", "London England".
+  if (!rest.filter(Boolean).length) {
+    const ws = name.split(/\s+/);
+    for (const k of [2, 1]) {
+      if (ws.length > k && KNOWN_REGIONS.has(fold(ws.slice(-k).join(" ")))) {
+        rest = [ws.slice(-k).join(" ")];
+        name = ws.slice(0, -k).join(" ");
+        break;
+      }
+    }
+  }
   // Each part after the name must fit the city: "Austin, TX, USA" is Texas and the United States.
-  const parts = rest.map((x) => x.toLowerCase().replace(/\./g, "").replace(/\s+/g, " ").trim()).filter(Boolean);
-  let list = await geocode(budget, name, "en");
+  const parts = rest.map(fold).filter(Boolean);
+  const seen = new Set<unknown>();
+  let list: any[] = [];
+  const idOf = (r: any) => r.id ?? [r.name, r.admin1, r.country_code, r.latitude, r.longitude].join("|");
+  for (const n of spellings(name)) for (const r of await geocode(budget, n, "en")) if (!seen.has(idOf(r))) (seen.add(idOf(r)), list.push(r));
   // A city typed in Hebrew, Arabic or Cyrillic is only found in its own language; its English name
   // (what Qloo is asked about) then comes from the same place's record.
   const script = /[\u0590-\u05FF]/.test(name) ? "he" : /[\u0600-\u06FF]/.test(name) ? "ar" : /[\u0400-\u04FF]/.test(name) ? "ru" : "";
@@ -74,21 +126,26 @@ export async function cityCenter(cache: KVNamespace, budget: Budget, city: strin
     if (native?.id) list = await byId(budget, native.id);
   }
   if (!list.length) return null;
-  // Towns and cities only, when there are any: Open-Meteo lists Vancouver Island above the city of Vancouver.
-  const towns = list.filter((r) => /^PPL/.test(String(r.feature_code ?? "PPL")));
-  if (towns.length) list = towns;
   const fits = (r: any, part: string) => {
-    const names = [part, ...(US_STATES[part] ? [US_STATES[part].toLowerCase()] : []), ...(OTHER_REGIONS[part] ?? []).map((x) => x.toLowerCase())];
-    const own = [r.admin1, r.country].filter(Boolean).map((v: unknown) => String(v).toLowerCase());
-    return names.some((n) => own.some((v) => v === n || (n.length > 3 && v.includes(n)))) || COUNTRY_WORDS[part] === String(r.country_code ?? "").toLowerCase();
+    const own = [r.admin1, r.country].filter(Boolean).map(fold);
+    const cc = fold(r.country_code);
+    return regionNames(part).some((n) => own.some((v) => v === n || (n.length > 3 && v.includes(n)))) || COUNTRY_WORDS[part] === cc || (part.length === 2 && part === cc);
   };
   const matches = parts.length ? list.filter((r) => parts.every((p) => fits(r, p))) : [];
   const pool = matches.length ? matches : list;
-  const r = [...pool].sort((a, b) => (b.population ?? 0) - (a.population ?? 0))[0];
+  // Towns and cities first (Open-Meteo lists Vancouver Island above the city of Vancouver), unless an island
+  // or region is far bigger than any town of that name (Long Island, Maui).
+  const pop = (r: any) => r.population ?? 0;
+  const byPop = (xs: any[]) => [...xs].sort((a, b) => pop(b) - pop(a))[0];
+  const town = byPop(pool.filter((r) => /^PPL/.test(String(r.feature_code ?? "PPL"))));
+  const other = byPop(pool.filter((r) => !/^PPL/.test(String(r.feature_code ?? "PPL"))));
+  const r = town && !(other && pop(other) > 10 * pop(town)) ? town : (other ?? town);
   // US and Canadian cities are named with their state or province; elsewhere with the country. The
   // region is kept even when it repeats the name: Qloo reads "New York" as the state and
   // "New York, New York" as the city (measured).
-  const region = r.country_code === "US" || r.country_code === "CA" ? r.admin1 : r.country;
+  // A few records carry no country name (Puerto Rico, Hong Kong): the code names it.
+  const NO_COUNTRY: Record<string, string> = { PR: "Puerto Rico", HK: "Hong Kong", MO: "Macau" };
+  const region = r.country_code === "US" || r.country_code === "CA" ? r.admin1 : (r.country ?? NO_COUNTRY[r.country_code] ?? r.admin1);
   const label = `${r.name}${region ? ", " + region : ""}`;
   const typedRegion = rest.filter(Boolean).join(", ");
   const out: Place = { lat: r.latitude, lon: r.longitude, name: label, query: label, ...(typedRegion && !matches.length ? { unmatched: typedRegion } : {}) };
