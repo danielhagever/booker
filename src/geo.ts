@@ -85,31 +85,42 @@ const KNOWN_REGIONS = new Set([
   ...Object.values(OTHER_REGIONS).flat().map(fold), ...Object.keys(COUNTRY_WORDS), ...Object.keys(ENDONYMS),
   "canada", "australia", "germany", "france", "spain", "italy", "ireland", "netherlands", "japan", "mexico", "brazil", "israel",
 ]);
-// "St. Paul", "Saint Paul" and "St Paul" are one place to a person, but Open-Meteo knows one spelling.
+// "St. Paul", "Saint Paul" and "St Paul" are one place to a person, but Open-Meteo knows one spelling,
+// anywhere in the name ("Bay St. Louis", "Port St. Lucie"). The short and the long form are both looked up.
+const SHORT_LONG: [RegExp, string, string][] = [
+  [/\b(st|saint)\b\.?/gi, "St.", "Saint"],
+  [/\b(ste|sainte)\b\.?/gi, "Ste.", "Sainte"],
+  [/\b(ft|fort)\b\.?/gi, "Ft.", "Fort"],
+  [/\b(mt|mount)\b\.?/gi, "Mt.", "Mount"],
+];
 function spellings(name: string): string[] {
-  const m = name.match(/^(st|saint|ste|sainte|ft|fort|mt|mount)\.?\s+(.+)$/i);
-  if (!m) return [name];
-  const head = m[1].toLowerCase();
-  const forms = ["st", "saint"].includes(head) ? ["St.", "Saint"] : ["ste", "sainte"].includes(head) ? ["Ste.", "Sainte"] : ["ft", "fort"].includes(head) ? ["Fort", "Ft."] : ["Mount", "Mt."];
-  return [name, ...forms.map((f) => `${f} ${m[2]}`).filter((x) => fold(x) !== fold(name))];
+  const out = [name];
+  for (const [re, short, long] of SHORT_LONG) {
+    if (!re.test(name)) continue;
+    for (const form of [short, long]) {
+      const v = name.replace(re, form).replace(/\.\s*\./g, ".");
+      if (!out.some((x) => fold(x) === fold(v))) out.push(v);
+    }
+  }
+  return out.slice(0, 3);
 }
 
 export async function cityCenter(cache: KVNamespace, budget: Budget, city: string): Promise<Place | null> {
-  const key = `city6:${city.toLowerCase()}`;
+  const key = `city7:${city.toLowerCase()}`;
   const hit = await kvGet(cache, budget, key);
   if (hit) return hit as Place;
   const typed = ALIASES[fold(city)] ?? city;
   let [name, ...rest] = typed.split(",").map((x) => x.trim());
   if (!name) return null;
-  // Without a comma the state or country may close the text: "Austin TX", "Portland Maine", "London England".
+  // Without a comma the state or country may close the text ("Austin TX", "Portland Maine", "London
+  // England"), but a city's own name may end in one too ("New Britain", "Port Washington", "West New York"):
+  // the whole name is kept when Open-Meteo has a place with exactly that name.
   if (!rest.filter(Boolean).length) {
     const ws = name.split(/\s+/);
-    for (const k of [2, 1]) {
-      if (ws.length > k && KNOWN_REGIONS.has(fold(ws.slice(-k).join(" ")))) {
-        rest = [ws.slice(-k).join(" ")];
-        name = ws.slice(0, -k).join(" ");
-        break;
-      }
+    const k = [3, 2, 1].find((k) => ws.length > k && KNOWN_REGIONS.has(fold(ws.slice(-k).join(" "))));
+    if (k && !(await geocode(budget, name, "en")).some((r) => fold(r.name) === fold(name))) {
+      rest = [ws.slice(-k).join(" ")];
+      name = ws.slice(0, -k).join(" ");
     }
   }
   // Each part after the name must fit the city: "Austin, TX, USA" is Texas and the United States.
@@ -126,12 +137,15 @@ export async function cityCenter(cache: KVNamespace, budget: Budget, city: strin
     if (native?.id) list = await byId(budget, native.id);
   }
   if (!list.length) return null;
-  const fits = (r: any, part: string) => {
+  // A part fits by name (a state, province or country, or their codes) or, failing that, as an ISO
+  // country code; a state wins over a country code ("Richmond, CA" is California, not Canada).
+  const byName = (r: any, part: string) => {
     const own = [r.admin1, r.country].filter(Boolean).map(fold);
-    const cc = fold(r.country_code);
-    return regionNames(part).some((n) => own.some((v) => v === n || (n.length > 3 && v.includes(n)))) || COUNTRY_WORDS[part] === cc || (part.length === 2 && part === cc);
+    return regionNames(part).some((n) => own.some((v) => v === n || (n.length > 3 && v.includes(n)))) || COUNTRY_WORDS[part] === fold(r.country_code);
   };
-  const matches = parts.length ? list.filter((r) => parts.every((p) => fits(r, p))) : [];
+  const byCode = (r: any, part: string) => byName(r, part) || (part.length === 2 && part === fold(r.country_code));
+  const named = parts.length ? list.filter((r) => parts.every((p) => byName(r, p))) : [];
+  const matches = named.length ? named : parts.length ? list.filter((r) => parts.every((p) => byCode(r, p))) : [];
   const pool = matches.length ? matches : list;
   // Towns and cities first (Open-Meteo lists Vancouver Island above the city of Vancouver), unless an island
   // or region is far bigger than any town of that name (Long Island, Maui).
