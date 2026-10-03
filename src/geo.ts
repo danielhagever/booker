@@ -26,7 +26,15 @@ const US_STATES: Record<string, string> = {
   ri: "Rhode Island", sc: "South Carolina", sd: "South Dakota", tn: "Tennessee", tx: "Texas", ut: "Utah",
   vt: "Vermont", va: "Virginia", wa: "Washington", wv: "West Virginia", wi: "Wisconsin", wy: "Wyoming",
 };
-const COUNTRY_WORDS: Record<string, string> = { usa: "us", "united states": "us", us: "us", uk: "gb", "united kingdom": "gb", england: "gb" };
+// Province and state codes outside the US ("Toronto, ON", "Melbourne, VIC"); a code can name more than one
+// region (NT: Northwest Territories or Northern Territory), and the city's own record decides which.
+const OTHER_REGIONS: Record<string, string[]> = {
+  on: ["Ontario"], qc: ["Quebec"], bc: ["British Columbia"], ab: ["Alberta"], mb: ["Manitoba"], sk: ["Saskatchewan"],
+  ns: ["Nova Scotia"], nb: ["New Brunswick"], nl: ["Newfoundland and Labrador"], pe: ["Prince Edward Island"], yt: ["Yukon"],
+  nu: ["Nunavut"], nt: ["Northwest Territories", "Northern Territory"], nsw: ["New South Wales"], vic: ["Victoria"],
+  qld: ["Queensland"], wa: ["Western Australia"], sa: ["South Australia"], tas: ["Tasmania"], act: ["Australian Capital Territory"],
+};
+const COUNTRY_WORDS: Record<string, string> = { usa: "us", "united states": "us", us: "us", uk: "gb", "united kingdom": "gb", england: "gb", scotland: "gb", wales: "gb" };
 
 async function kvGet(cache: KVNamespace, budget: Budget, key: string): Promise<any> {
   if (!budget.take()) return null;
@@ -50,14 +58,13 @@ async function kvPut(cache: KVNamespace, budget: Budget, key: string, value: unk
 // fetch several candidates and prefer the one whose state or country matches what came after the
 // comma; otherwise take the most populous.
 export async function cityCenter(cache: KVNamespace, budget: Budget, city: string): Promise<Place | null> {
-  const key = `city4:${city.toLowerCase()}`;
+  const key = `city5:${city.toLowerCase()}`;
   const hit = await kvGet(cache, budget, key);
   if (hit) return hit as Place;
   const [name, ...rest] = city.split(",").map((x) => x.trim());
   if (!name) return null;
-  const raw = rest.join(" ").toLowerCase().replace(/\./g, "").trim();
-  const qualifier = US_STATES[raw]?.toLowerCase() ?? raw;
-  const country = COUNTRY_WORDS[raw];
+  // Each part after the name must fit the city: "Austin, TX, USA" is Texas and the United States.
+  const parts = rest.map((x) => x.toLowerCase().replace(/\./g, "").replace(/\s+/g, " ").trim()).filter(Boolean);
   let list = await geocode(budget, name, "en");
   // A city typed in Hebrew, Arabic or Cyrillic is only found in its own language; its English name
   // (what Qloo is asked about) then comes from the same place's record.
@@ -67,13 +74,15 @@ export async function cityCenter(cache: KVNamespace, budget: Budget, city: strin
     if (native?.id) list = await byId(budget, native.id);
   }
   if (!list.length) return null;
-  const matches = country
-    ? list.filter((r) => String(r.country_code ?? "").toLowerCase() === country)
-    : qualifier
-      ? list.filter((r) =>
-          [r.admin1, r.country].some((v) => v && (String(v).toLowerCase() === qualifier || (qualifier.length > 3 && String(v).toLowerCase().includes(qualifier)))),
-        )
-      : [];
+  // Towns and cities only, when there are any: Open-Meteo lists Vancouver Island above the city of Vancouver.
+  const towns = list.filter((r) => /^PPL/.test(String(r.feature_code ?? "PPL")));
+  if (towns.length) list = towns;
+  const fits = (r: any, part: string) => {
+    const names = [part, ...(US_STATES[part] ? [US_STATES[part].toLowerCase()] : []), ...(OTHER_REGIONS[part] ?? []).map((x) => x.toLowerCase())];
+    const own = [r.admin1, r.country].filter(Boolean).map((v: unknown) => String(v).toLowerCase());
+    return names.some((n) => own.some((v) => v === n || (n.length > 3 && v.includes(n)))) || COUNTRY_WORDS[part] === String(r.country_code ?? "").toLowerCase();
+  };
+  const matches = parts.length ? list.filter((r) => parts.every((p) => fits(r, p))) : [];
   const pool = matches.length ? matches : list;
   const r = [...pool].sort((a, b) => (b.population ?? 0) - (a.population ?? 0))[0];
   // US and Canadian cities are named with their state or province; elsewhere with the country. The

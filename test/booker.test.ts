@@ -499,3 +499,33 @@ test("a city whose comma part doesn't match is placed by its name, and the answe
     m.restore();
   }
 });
+
+test("city lookup: towns over islands, province and state codes worldwide, and every part after the name", async () => {
+  const { cityCenter } = await import("../src/geo.ts");
+  const R = (name: string, admin1: string, country: string, country_code: string, population: number, feature_code = "PPL") => ({ name, admin1, country, country_code, population, feature_code, latitude: 1, longitude: 1 });
+  const GEO: Record<string, unknown[]> = {
+    vancouver: [R("Vancouver Island", "British Columbia", "Canada", "CA", 748937, "ISL"), R("Vancouver", "British Columbia", "Canada", "CA", 662248), R("Vancouver", "Washington", "United States", "US", 190915)],
+    london: [R("London", "England", "United Kingdom", "GB", 8961989, "PPLC"), R("London", "Ontario", "Canada", "CA", 383822)],
+    portland: [R("Portland", "Oregon", "United States", "US", 652503), R("Portland", "Maine", "United States", "US", 66215)],
+    austin: [R("Austin", "Texas", "United States", "US", 961855)],
+    toronto: [R("Toronto", "Ontario", "Canada", "CA", 2731571)],
+    melbourne: [R("Melbourne", "Victoria", "Australia", "AU", 4917750), R("Melbourne", "Florida", "United States", "US", 84678)],
+    perth: [R("Perth", "Western Australia", "Australia", "AU", 2059484), R("Perth", "Scotland", "United Kingdom", "GB", 47430)],
+    chicago: [R("Chicago", "Illinois", "United States", "US", 2720546)],
+  };
+  const m = mockFetch((c) => (c.host === "geocoding-api.open-meteo.com" ? { body: { results: GEO[(c.params.get("name") ?? "").toLowerCase()] ?? [] } } : undefined));
+  try {
+    const at = async (typed: string) => {
+      const p = await cityCenter(memoryKV().kv, new Budget(48), typed);
+      return `${p!.name}${p!.unmatched ? ` [unmatched ${p!.unmatched}]` : ""}`;
+    };
+    for (const [typed, want] of [
+      ["Vancouver", "Vancouver, British Columbia"], ["Vancouver, BC", "Vancouver, British Columbia"], ["Vancouver, Canada", "Vancouver, British Columbia"],
+      ["London, ON", "London, Ontario"], ["London", "London, United Kingdom"], ["Toronto, ON", "Toronto, Ontario"],
+      ["Portland, ME, USA", "Portland, Maine"], ["Portland, Maine", "Portland, Maine"], ["Austin, TX, USA", "Austin, Texas"],
+      ["Melbourne, VIC", "Melbourne, Australia"], ["Perth, WA", "Perth, Australia"], ["Chicago, Austin", "Chicago, Illinois [unmatched Austin]"],
+    ]) assert.equal(await at(typed), want, typed);
+  } finally {
+    m.restore();
+  }
+});
