@@ -16,16 +16,20 @@ export const clean = (v: unknown, max = MAX_NAME): string => (typeof v === "stri
 // semicolons or new lines. A name with a comma goes in quotes: "Tyler, the Creator". Splitting never
 // happens on "and": "Simon and Garfunkel" stays one name.
 export function splitNames(text: string): string[] {
+  // Each opening quote has its own closing one: "...", “...”, „...“ (German), «...».
+  const CLOSE: Record<string, string> = { '"': '"', "“": "”", "„": "“", "«": "»" };
   const out: string[] = [];
   let cur = "";
-  let quoted = false;
+  let closer = "";
   for (const ch of text) {
-    if (ch === '"' || ch === "\u201c" || ch === "\u201d") quoted = ch === "\u201c" ? true : ch === "\u201d" ? false : !quoted;
-    else if (!quoted && (ch === "," || ch === ";" || ch === "\n")) (out.push(cur), (cur = ""));
+    if (closer && ch === closer) closer = "";
+    else if (!closer && CLOSE[ch]) closer = CLOSE[ch];
+    else if (!closer && (ch === "," || ch === ";" || ch === "\n")) (out.push(cur), (cur = ""));
     else cur += ch;
   }
   out.push(cur);
-  return out;
+  // A quote that never closes would join everything after it: split that text plainly instead.
+  return closer ? text.split(/[,;\n]/).map((x) => x.replace(/["“”„«»]/g, "")) : out;
 }
 
 export function names(v: unknown, max: number): { list: Named[]; leftOut: string[] } {
