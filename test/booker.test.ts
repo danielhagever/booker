@@ -223,6 +223,9 @@ test("Qloo calls are paced: no more than one every 340 ms by default", async () 
 test("helpers: resemblance, names without 'the', music rooms, city spelling, list parsing", () => {
   assert.ok(resembles("snail male", "Snail Mail"));
   assert.ok(!resembles("zzqx", "Wednesday"));
+  assert.ok(resembles("Gary Clark", "Gary Clark Jr.") && resembles("Wednesday band", "Wednesday") && resembles("Antone's", "Antone's Nightclub"));
+  assert.ok(!resembles("Nobody Real Band Xyz", "The Band"), "one shared word in a long name isn't a match (seen live)");
+  assert.ok(!resembles("Bea", "Beach House"), "a fragment of a word isn't a name");
   assert.equal(nameKey("The Empty Bottle"), nameKey("Empty Bottle"));
   assert.ok(isRoom({ id: "x", name: "x", types: [], categories: ["Bar", "Live music venue"] }));
   assert.ok(!isRoom({ id: "x", name: "x", types: [], categories: ["Record store"] }));

@@ -34,12 +34,14 @@ function typoDistance(a: string, b: string): number {
   return d[a.length][b.length];
 }
 
-// One contains the other, or at least half the typed words appear, allowing a typo or two.
+// One contains the other as whole words, and the part is at least half of the whole ("Gary Clark" is
+// Gary Clark Jr., but "Nobody Real Band" isn't The Band, and "Bea" isn't Beach House); or at least half
+// the typed words appear in the name, allowing a typo or two.
 export function resembles(typed: string, name: string): boolean {
   const a = words(typed), b = words(name);
   if (!a.length || !b.length) return false;
-  const A = a.join(" "), B = b.join(" ");
-  if (A === B || B.includes(A) || A.includes(B)) return true;
+  const A = ` ${a.join(" ")} `, B = ` ${b.join(" ")} `;
+  if (A === B || (B.includes(A) && a.length * 2 >= b.length) || (A.includes(B) && b.length * 2 >= a.length)) return true;
   const close = (w: string) => b.some((x) => x === w || typoDistance(w, x) <= (w.length > 5 ? 2 : w.length > 3 ? 1 : 0));
   return a.filter(close).length / a.length >= 0.5;
 }
