@@ -200,15 +200,19 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
     if (!full && raw.length && raw.every((w) => said.includes(w)) && said.every((w) => raw.includes(w) || (w !== "city" && loc.all.has(w)))) full = true;
     const near = content(raw);
     const closeness = typedContent.length && near.length ? (typedContent.filter((w) => near.includes(w)).length * 2) / (typedContent.length + near.length) : 0;
-    const music = (e.categories ?? []).some((c) => MUSIC.test(c));
-    return { e, order, inCity, full, bare, bareAnywhere, elsewhere, closeness, resembles: wordsResemble(typedContent, near, false), music };
+    const music = isMusic(e);
+    // What was typed opens a longer name ("Red Rocks" for Red Rocks Park and Amphitheatre), and the rest is a place.
+    let longer = false;
+    for (let k = typed.length; k >= 1 && !longer; k--)
+      if (raw.length > k && typed.slice(0, k).every((w, i) => raw[i] === w) && (ownPlace(typed.slice(k)) || otherPlace(typed.slice(k)))) longer = true;
+    return { e, order, inCity, full, bare, bareAnywhere, elsewhere, longer, closeness, resembles: wordsResemble(typedContent, near, false), music };
   });
 
-  // 2. Where: the typed city, or its metro area (within 40 km of a candidate in the typed city: The Sinclair
-  // in Cambridge for "Boston", the Turf Club in Saint Paul for "Minneapolis", Red Rocks in Morrison for
-  // "Denver"), from Qloo's coordinates.
+  // 2. Where: the typed city, or its metro area (within 60 km of a candidate in the typed city: The Sinclair
+  // in Cambridge for "Boston", the Turf Club in Saint Paul for "Minneapolis", Red Rocks for a Denver bar at
+  // the airport, 50 km), from Qloo's coordinates.
   const centers = matched.filter((m) => m.inCity && m.e.lat !== undefined && m.e.lon !== undefined).map((m) => m.e as { lat: number; lon: number });
-  const inArea = (e: Entity) => e.lat !== undefined && e.lon !== undefined && centers.some((c) => km(c, e as { lat: number; lon: number }) <= 40);
+  const inArea = (e: Entity) => e.lat !== undefined && e.lon !== undefined && centers.some((c) => km(c, e as { lat: number; lon: number }) <= 60);
 
   // 3. Tiers: the full name in the city, then in the area; the name without its ending in the city or area;
   // the full name, then without the ending, where no other place was typed (or the record has none); the
@@ -231,8 +235,11 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
   // Denver and the amphitheatre in Morrison), and a music venue comes first among them.
   const best = Math.min(9, ...tiered.map((t) => t.tier));
   if (best === 9) return null;
-  // Only when no music venue matches in the city itself does one in the area join as a peer.
+  // Only when no music venue matches in the city itself does one in the area join as a peer, also one
+  // whose longer name opens with what was typed (Qloo's "Red Rocks Park and Amphitheatre" in Indian Hills
+  // for "Red Rocks, Denver", next to the Red Rocks Bar in Denver).
   const musicInCity = tiered.some((t) => t.tier === 2 && t.music);
+  if (best === 2 && !musicInCity) for (const t of tiered) if (t.tier > 3 && t.longer && t.music && inArea(t.e)) t.tier = 3;
   const peers = best === 2 && !musicInCity ? [2, 3] : best === 3 ? [3] : [best];
   const ranked = tiered
     .filter((t) => t.tier < 9)
@@ -274,10 +281,15 @@ export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | 
 const ROOM = /\b(live music|concert hall|music venue|night ?club|jazz club|event venue|performing arts theater|theater|theatre|amphitheater|auditorium|bar|pub|lounge|club)\b/i;
 const NOT_ROOM = /\b(golf|country club|health club|fitness|gym|tennis|yacht|swim|athletic|sports club)\b/i;
 const MUSIC = /\b(live music|concert hall|music venue|jazz club|night ?club|amphitheat(er|re))\b/i;
+// Some records have no category at all (live: "Red Rocks Park and Amphitheatre"); their name decides.
+const ROOM_NAME = /\b(amphithea(tre|ter)|theat(re|er)|ballroom|music hall|concert hall|auditorium|arena|club|lounge|tavern|saloon|pub|bar)\b/i;
+const MUSIC_NAME = /\b(amphithea(tre|ter)|ballroom|music hall|concert hall)\b/i;
 export const isRoom = (e: Entity) => {
   const cats = e.categories ?? [];
+  if (!cats.length) return ROOM_NAME.test(e.name);
   return cats.some((c) => ROOM.test(c)) && (cats.some((c) => MUSIC.test(c)) || !cats.some((c) => NOT_ROOM.test(c)));
 };
+const isMusic = (e: Entity) => (e.categories?.length ? e.categories.some((c) => MUSIC.test(c)) : MUSIC_NAME.test(e.name));
 // Venues: "The Empty Bottle, Chicago". The whole text goes to Qloo's place search (the city helps it);
 // chooseVenue decides exact, ambiguous or closest.
 export async function resolveVenue(q: Qloo, input: string): Promise<Resolved | null> {

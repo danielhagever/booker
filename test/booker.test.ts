@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { forArtist, forVenue, sizeOf, fromSize, cityOf } from "../src/booker.ts";
-import { resembles, nameKey, squashed, isRoom, chooseVenue, resolveArtist } from "../src/resolve.ts";
+import { resembles, nameKey, squashed, isRoom, chooseVenue, resolveArtist, resolveVenue } from "../src/resolve.ts";
 import { names, cityList } from "../src/input.ts";
 import { Budget } from "../src/limits.ts";
 import { ENV, UUID, artist, memoryKV, mockFetch, venue, type Call } from "./mock.ts";
@@ -417,4 +417,18 @@ test("artists: an equal name with its spaces wins; without spaces only as a fall
   assert.equal(`${sg!.entity.name} ${sg!.match}`, "S.G. Goodman exact");
   const jj = await resolveArtist(fake(["alt-J", "J.J. Cale"]), "J. J. Cale");
   assert.equal(`${jj!.entity.name} ${jj!.match}`, "J.J. Cale exact");
+});
+
+test("Red Rocks, Denver: Qloo's amphitheatre record has no category and sits 50 km from the Denver bar (seen live)", async () => {
+  const found = [
+    { id: "1", name: "Red Rocks Locksmith Denver", types: [], categories: ["Locksmith"], city: "Denver", region: "Colorado", countryCode: "US", lat: 39.74, lon: -104.99 },
+    { id: "2", name: "Red Rocks Bar", types: [], categories: ["Restaurant", "Bar", "Barbecue restaurant"], city: "Denver", region: "Colorado", countryCode: "US", lat: 39.85, lon: -104.6735 },
+    { id: "3", name: "Red Rocks Cinema", types: [], categories: ["Movie theater"], city: "National Capital Region", region: "Haryana", countryCode: "IN", lat: 28.6, lon: 77.2 },
+    { id: "4", name: "Red Rocks Park and Amphitheatre", types: [], categories: [], city: "Indian Hills", region: "Colorado", countryCode: "US", lat: 39.6655, lon: -105.2052 },
+  ];
+  const r = await resolveVenue({ search: async () => found } as any, "Red Rocks, Denver");
+  assert.equal(`${r!.entity.name} ${r!.match}`, "Red Rocks Park and Amphitheatre ambiguous");
+  assert.ok(r!.alternatives.some((a) => a.name === "Red Rocks Bar"), "the bar is offered");
+  const morrison = await resolveVenue({ search: async () => found } as any, "Red Rocks Park and Amphitheatre");
+  assert.equal(`${morrison!.entity.name} ${morrison!.match}`, "Red Rocks Park and Amphitheatre exact");
 });
