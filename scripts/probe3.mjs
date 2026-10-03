@@ -1,6 +1,6 @@
 // Booker probes, round 3: venues that fit an artist (reverse mode); the live-music-venue tag; local fit via heatmap.
 import { readFileSync } from "node:fs";
-const KEY = readFileSync(new URL("../../newcomer/.dev.vars", import.meta.url), "utf8").match(/QLOO_API_KEY\s*=\s*"?([^"\n]+)/)[1];
+const KEY = readFileSync(new URL("../.dev.vars", import.meta.url), "utf8").match(/QLOO_API_KEY\s*=\s*"?([^"\n]+)/)[1];
 const BASE = "https://hackathon.api.qloo.com";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function get(path, params) {

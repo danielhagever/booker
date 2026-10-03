@@ -1,6 +1,6 @@
 // Booker probes, round 2: city-level location signal, past acts as signal, popularity band, scoring a given list, demographics.
 import { readFileSync } from "node:fs";
-const KEY = readFileSync(new URL("../../newcomer/.dev.vars", import.meta.url), "utf8").match(/QLOO_API_KEY\s*=\s*"?([^"\n]+)/)[1];
+const KEY = readFileSync(new URL("../.dev.vars", import.meta.url), "utf8").match(/QLOO_API_KEY\s*=\s*"?([^"\n]+)/)[1];
 const BASE = "https://hackathon.api.qloo.com";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function get(path, params) {
