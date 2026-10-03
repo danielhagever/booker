@@ -12,11 +12,24 @@ export const validId = (id: string) => TAG_OR_ENTITY_ID.test(id);
 
 export const clean = (v: unknown, max = MAX_NAME): string => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 
-// A list of names: an array of strings or {name, id} objects, or one text. In a text written one per
-// line (or with semicolons), commas stay inside names ("Tyler, the Creator", "Black Country, New Road");
-// on one line, commas separate. Splitting never happens on "and": "Simon and Garfunkel" stays one name.
+// A list of names: an array of strings or {name, id} objects, or one text separated by commas,
+// semicolons or new lines. A name with a comma goes in quotes: "Tyler, the Creator". Splitting never
+// happens on "and": "Simon and Garfunkel" stays one name.
+export function splitNames(text: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let quoted = false;
+  for (const ch of text) {
+    if (ch === '"' || ch === "\u201c" || ch === "\u201d") quoted = ch === "\u201c" ? true : ch === "\u201d" ? false : !quoted;
+    else if (!quoted && (ch === "," || ch === ";" || ch === "\n")) (out.push(cur), (cur = ""));
+    else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
 export function names(v: unknown, max: number): { list: Named[]; leftOut: string[] } {
-  const raw: unknown[] = typeof v === "string" ? v.split(/[;\n]/.test(v.trim()) ? /[;\n]+/ : /,+/) : Array.isArray(v) ? v : [];
+  const raw: unknown[] = typeof v === "string" ? splitNames(v) : Array.isArray(v) ? v : [];
   const all: Named[] = [];
   for (const r of raw) {
     const name = clean(typeof r === "string" ? r : (r as any)?.name);

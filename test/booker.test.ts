@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { forArtist, forVenue, sizeOf, fromSize, cityOf } from "../src/booker.ts";
-import { resembles, nameKey, isRoom, venueResembles, placeWords } from "../src/resolve.ts";
+import { resembles, nameKey, isRoom, chooseVenue } from "../src/resolve.ts";
 import { names, cityList } from "../src/input.ts";
 import { Budget } from "../src/limits.ts";
 import { ENV, UUID, artist, memoryKV, mockFetch, venue, type Call } from "./mock.ts";
@@ -226,13 +226,15 @@ test("helpers: resemblance, names without 'the', music rooms, city spelling, lis
   assert.ok(resembles("Gary Clark", "Gary Clark Jr.") && resembles("Wednesday band", "Wednesday") && resembles("Antone's", "Antone's Nightclub"));
   assert.ok(!resembles("Nobody Real Band Xyz", "The Band"), "one shared word in a long name isn't a match (seen live)");
   assert.ok(!resembles("Bea", "Beach House"), "a fragment of a word isn't a name");
+  assert.equal(nameKey("Beyonce"), nameKey("Beyoncé"));
+  assert.equal(nameKey("Sigur Ros"), nameKey("Sigur Rós"));
   assert.equal(nameKey("The Empty Bottle"), nameKey("Empty Bottle"));
   assert.ok(isRoom({ id: "x", name: "x", types: [], categories: ["Bar", "Live music venue"] }));
   assert.ok(!isRoom({ id: "x", name: "x", types: [], categories: ["Record store"] }));
   assert.equal(cityOf({ id: "x", name: "x", types: [], city: "Chicago", region: "Illinois", countryCode: "US", country: "United States" }), "Chicago, Illinois");
   assert.equal(cityOf({ id: "x", name: "x", types: [], city: "London", region: "England", countryCode: "GB", country: "United Kingdom" }), "London, United Kingdom");
   assert.deepEqual(names("Simon and Garfunkel, Hovvdy, hovvdy, Dehd", 8).list.map((n) => n.name), ["Simon and Garfunkel", "Hovvdy", "Dehd"]);
-  assert.deepEqual(names("Tyler, the Creator\nBlack Country, New Road; Wet Leg\n", 8).list.map((n) => n.name), ["Tyler, the Creator", "Black Country, New Road", "Wet Leg"]);
+  assert.deepEqual(names('"Tyler, the Creator", \u201cBlack Country, New Road\u201d; Wet Leg\nBlack Pumas, Shakey Graves', 8).list.map((n) => n.name), ["Tyler, the Creator", "Black Country, New Road", "Wet Leg", "Black Pumas", "Shakey Graves"]);
   assert.deepEqual(names([{ name: "Twins", id: "not-an-id" }], 8).list, [{ name: "Twins" }]);
   assert.deepEqual(cityList("Austin, Texas\nChicago, Illinois; Austin, Texas").list, ["Austin, Texas", "Chicago, Illinois"]);
 });
@@ -311,18 +313,28 @@ test("sizes near 1 still widen: a 0.9998 act's range reaches past 0.9998", () =>
   assert.ok(Number.isFinite(sizeOf(1)));
 });
 
-test("a venue typed with its city, no comma: the room's name decides, not the city's words (seen live)", () => {
-  const place = (name: string, city: string, region: string) => ({ id: "x", name, types: [], city, region, country: "United States", countryCode: "US" });
-  const typed = "Bowery Ballroom New York City";
-  assert.ok(venueResembles(typed, place("The Bowery Ballroom", "New York", "New York")));
-  assert.ok(!venueResembles(typed, place("Resorts World New York City", "New York", "New York")));
-  assert.ok(!venueResembles(typed, place("New York City Center", "New York", "New York")));
-  assert.ok(venueResembles("Troubadour Los Angeles", place("The Troubadour", "West Hollywood", "California")));
-  assert.ok(!venueResembles("Troubadour Los Angeles", place("Los Angeles Theatre", "Los Angeles", "California")));
-  assert.ok(venueResembles("Fillmore San Francisco", place("The Fillmore", "San Francisco", "California")));
-  assert.ok(!venueResembles("Fillmore San Francisco", place("San Francisco Symphony", "San Francisco", "California")));
-  assert.ok(venueResembles("Antone's", place("Antone's Nightclub", "Austin", "Texas")) && venueResembles("Mohawk", place("Mohawk Austin", "Austin", "Texas")));
-  // A record without a city: the other candidates' city words still don't count.
-  const nycc = { id: "y", name: "New York City Center", types: [] };
-  assert.ok(!venueResembles(typed, nycc, placeWords([place("The Bowery Ballroom", "New York", "New York"), nycc])));
+test("venues: the words that name the room decide, not the city, a kind of room, or a longer name (seen live)", () => {
+  let n = 0;
+  const place = (name: string, city?: string, region?: string, categories = ["Live music venue"]) => ({ id: String(++n), name, types: [], categories, ...(city ? { city, region, country: "United States", countryCode: "US" } : {}) });
+  const pick = (typed: string, found: any[]) => {
+    const c = chooseVenue(typed, found);
+    return c ? `${c.pick.name}${c.exact.length === 1 ? "" : c.exact.length ? " (ambiguous)" : " (closest)"}` : "none";
+  };
+  const bowery = [place("Resorts World New York City", "New York", "New York", ["Casino", "Bar"]), place("New York City Center", undefined, undefined, ["Performing arts theater"]), place("The Bowery Ballroom", "New York", "New York")];
+  assert.equal(pick("Bowery Ballroom New York City", bowery), "The Bowery Ballroom");
+  assert.equal(chooseVenue("Bowery Ballroom New York City", bowery)!.list.length, 1, "no city-named place as an alternative");
+  const basement = [place("The Basement East", "Nashville", "Tennessee"), place("The Basement", "Nashville", "Tennessee")];
+  assert.equal(pick("The Basement, Nashville", basement), "The Basement");
+  assert.equal(pick("The Basement East, Nashville", basement), "The Basement East");
+  const dallas = [place("Granada Theater", "Dallas", "Texas"), place("Alley Theatre", "Houston", "Texas", ["Performing arts theater"]), place("Texas Theatre", "Dallas", "Texas", ["Movie theater", "Performing arts theater"])];
+  assert.equal(pick("Texas Theatre Dallas", dallas), "Texas Theatre");
+  assert.ok(!chooseVenue("Texas Theatre Dallas", dallas)!.list.some((e) => e.name === "Alley Theatre"));
+  const mohawk = [place("Mohawk", "Mohawk", "New York", ["Bar"]), place("Mohawk Austin", "Austin", "Texas", ["Bar", "Live music venue"])];
+  assert.equal(pick("Mohawk Austin", mohawk), "Mohawk Austin");
+  assert.equal(pick("Mohawk, Austin", mohawk), "Mohawk Austin");
+  assert.equal(pick("Troubadour Los Angeles", [place("Los Angeles Theatre", "Los Angeles", "California", ["Performing arts theater"]), place("The Troubadour", "West Hollywood", "California")]), "The Troubadour");
+  assert.equal(pick("Fillmore San Francisco", [place("San Francisco Symphony", "San Francisco", "California", ["Concert hall"]), place("The Fillmore", "San Francisco", "California")]), "The Fillmore");
+  assert.equal(pick("Antone's, Austin", [place("Antone's Nightclub", "Austin", "Texas")]), "Antone's Nightclub");
+  assert.equal(pick("Empty Botle, Chicago", [place("The Empty Bottle", "Chicago", "Illinois")]), "The Empty Bottle (closest)");
+  assert.equal(pick("House of Blues, Chicago", [place("House of Blues Houston", "Houston", "Texas"), place("House of Blues Chicago", "Chicago", "Illinois")]), "House of Blues Chicago");
 });

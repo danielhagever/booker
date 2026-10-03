@@ -20,7 +20,9 @@ export interface Resolved {
 }
 
 const STOP = new Set(["the", "a", "an", "of", "and", "&"]);
-const words = (s: string) => normalizeName(s).replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w && !STOP.has(w));
+// Accents are folded too: "Beyonce" is Beyoncé and "Sigur Ros" is Sigur Rós.
+const words = (s: string) =>
+  normalizeName(s).normalize("NFKD").replace(/\p{M}/gu, "").replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w && !STOP.has(w));
 // "The Empty Bottle" and "Empty Bottle" are the same name; so are "Snail Mail" and "snail mail".
 export const nameKey = (s: string) => words(s).join(" ");
 
@@ -49,15 +51,25 @@ function wordsResemble(a: string[], b: string[], half: boolean): boolean {
   return a.filter(close).length / a.length >= 0.5;
 }
 
-// A venue is typed with its city ("Bowery Ballroom New York City", "Troubadour Los Angeles"), so the
-// words of the candidates' cities and states don't count on either side (`places`: every candidate's,
-// since some records have no city), and the room's name may sit inside the typed text. Otherwise the
-// city's words would pick any place named after the city (live: Resorts World New York City for the
-// Bowery Ballroom).
+// Venues. A venue is typed with its city, with or without a comma ("Bowery Ballroom New York City"), and
+// Qloo sometimes names a place with its city ("Mohawk Austin") or a kind of room ("Antone's Nightclub").
+// So names are compared by the words that name the room: trailing city or state words and generic words
+// ("theatre", "club", "ballroom") are dropped from the end, keeping at least one word. Exact means those
+// words are equal; otherwise a room resembles the text if one contains the other or the words are close.
+const GENERIC = new Set(["theatre", "theater", "club", "nightclub", "ballroom", "hall", "bar", "pub", "lounge", "room", "music", "live", "venue", "tavern", "saloon", "cafe", "auditorium", "arena", "center", "centre", "stage", "city"]);
 export const placeWords = (es: Entity[]) => new Set(es.flatMap((e) => words([e.city, e.region, e.country].filter(Boolean).join(" "))));
-export function venueResembles(typed: string, e: Entity, places = placeWords([e])): boolean {
-  const own = (w: string) => !places.has(w);
-  return wordsResemble(words(typed).filter(own), words(e.name).filter(own), false);
+function roomWords(ws: string[], place: Set<string>): { room: string[]; city: string[] } {
+  const room = [...ws];
+  const city: string[] = [];
+  while (room.length > 1 && (place.has(room[room.length - 1]) || GENERIC.has(room[room.length - 1]))) {
+    const w = room.pop()!;
+    if (place.has(w)) city.unshift(w);
+  }
+  return { room, city };
+}
+export const sameRoom = (a: string[], b: string[]) => a.join(" ") === b.join(" ");
+export function venueResembles(typedRoom: string[], e: Entity): boolean {
+  return wordsResemble(typedRoom, roomWords(words(e.name), placeWords([e])).room, false);
 }
 
 const label = (e: Entity) => (e.disambiguation && nameKey(e.disambiguation) !== nameKey(e.name) ? `${e.name} (${e.disambiguation})` : e.name);
@@ -89,16 +101,28 @@ export const isRoom = (e: Entity) => {
 const musicFirst = (a: Entity, b: Entity) => Number((b.categories ?? []).some((c) => MUSIC.test(c))) - Number((a.categories ?? []).some((c) => MUSIC.test(c)));
 
 // Venues: "The Empty Bottle, Chicago". The whole text goes to Qloo's place search (the city helps it);
-// the name part (before the comma) decides exact or closest.
-export async function resolveVenue(q: Qloo, input: string): Promise<Resolved | null> {
-  const name = input.split(",")[0].trim();
-  // Among places with the same name, one Qloo files as a music venue comes first (stable otherwise).
-  const found = (await q.search(input.replace(/,/g, " "), "urn:entity:place", 8)).filter(isRoom).sort(musicFirst);
-  const exact = found.filter((e) => nameKey(e.name) === nameKey(name) || nameKey(e.name).startsWith(nameKey(name) + " "));
-  const places = placeWords(found);
-  const list = found.filter((e) => exact.includes(e) || venueResembles(name, e, places));
+// the room's words decide exact or closest (see roomWords). The city typed after the comma, or at the end,
+// ranks first the places in that city; a same-named room elsewhere is an alternative, not "several share
+// this name".
+export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exact: Entity[]; list: Entity[] } | null {
+  const [name, ...rest] = input.split(",");
+  const typed = roomWords(words(name), placeWords(found));
+  const typedCity = new Set([...typed.city, ...words(rest.join(" "))]);
+  const inCity = (e: Entity) => [...placeWords([e])].some((w) => typedCity.has(w));
+  // Music venues first, then the typed city (stable otherwise: Qloo's order).
+  const ranked = [...found].sort(musicFirst).sort((a, b) => Number(inCity(b)) - Number(inCity(a)));
+  const same = ranked.filter((e) => sameRoom(typed.room, roomWords(words(e.name), placeWords([e])).room));
+  const exact = same.some(inCity) ? same.filter(inCity) : same;
+  const list = ranked.filter((e) => same.includes(e) || venueResembles(typed.room, e));
   if (!list.length) return null;
-  const pick = exact[0] ?? list[0];
+  return { pick: exact[0] ?? list[0], exact, list };
+}
+
+export async function resolveVenue(q: Qloo, input: string): Promise<Resolved | null> {
+  const found = (await q.search(input.replace(/,/g, " "), "urn:entity:place", 8)).filter(isRoom);
+  const chosen = chooseVenue(input, found);
+  if (!chosen) return null;
+  const { pick, exact, list } = chosen;
   return {
     input,
     entity: pick,
