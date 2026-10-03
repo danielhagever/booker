@@ -218,15 +218,19 @@ function howWeKnow(d) {
 
 const VERDICT = { fits: "fits your room", smaller: "opener", bigger: "bigger than your room", "off-taste": "off your crowd's taste", unscored: "not scored" };
 
-function actCard(c, max) {
+// Qloo's affinities for a shortlist sit close together (0.96 to 0.98), so the bar spans the lowest to the
+// highest affinity shown, not zero to one; the number is Qloo's.
+function actCard(c, lo, hi) {
+  const w = hi > lo ? 20 + 80 * (((c.affinity ?? lo) - lo) / (hi - lo)) : 100;
   return `<div class="act"><div class="top"><h3>${esc(c.name)}</h3><span class="score" title="Qloo affinity with the fans of your acts">${f3(c.affinity)}</span></div>
-    <div class="bar" title="Relative to the best match"><i style="width:${Math.round(((c.affinity ?? 0) / max) * 100)}%"></i></div>
+    <div class="bar" title="Where this act sits between the lowest and the highest affinity shown"><i style="width:${Math.round(w)}%"></i></div>
     <div class="m">${c.closest ? `Closest to your <b style="color:var(--ink)">${esc(c.closest.name)}</b> (${f3(c.closest.affinity)}) · ` : ""}popularity ${f3(c.popularity)}</div>
     <div>${(c.genres || []).map((g) => `<span class="tag">${esc(g)}</span>`).join("")}</div></div>`;
 }
 
 function renderVenue(d, body) {
-  const max = Math.max(...[...d.fits, ...d.openers].map((c) => c.affinity ?? 0), 0.0001);
+  const affs = [...d.fits, ...d.openers].map((c) => c.affinity).filter((a) => a !== undefined);
+  const lo = Math.min(...affs, 1), hi = Math.max(...affs, 0);
   const picks = [pickRow(d.venue, "altV", "venue"), ...d.acts.map((a, i) => pickRow(a, `altA${i}`, "act"))].join("");
   const unsure = [d.venue, ...d.acts].some((p) => (p.match === "closest" || p.match === "ambiguous") && p.alternatives.length);
   $("side").innerHTML = `
@@ -242,11 +246,11 @@ function renderVenue(d, body) {
     ${d.rivals.rooms.length ? `<div class="card"><h2>Rooms in town that fit ${esc(d.rivals.act)}</h2>${d.rivals.rooms.map((r, i) => `<div class="row"><span>#${i + 1} ${esc(r.name)}${r.you ? ` <span class="v fits">your room</span>` : ""}</span><span class="score">${f3(r.affinity)}</span></div>`).join("")}<p class="m" style="margin:8px 0 0">Qloo's ranking of live music venues in ${esc(d.city || "the city")} for this act's fans: the rooms that compete for the same show.${d.rivals.rooms.some((r) => r.you) ? "" : ` ${esc(d.venue.name)} isn't in Qloo's top ${d.rivals.rooms.length} for this act.`}</p></div>` : ""}`;
   const inbox = d.inbox.length ? `<div class="card"><h2>Your inbox</h2>${d.inbox.map((p) => `<div class="row"><span><b>${esc(p.name)}</b>${p.input && p.input.toLowerCase() !== p.name.toLowerCase() ? ` <span class="m">(you wrote ${esc(p.input)})</span>` : ""}<br><span class="m">${esc(p.why)}</span></span><span><span class="v ${esc(p.verdict)}">${esc(VERDICT[p.verdict] || p.verdict)}</span></span></div>`).join("")}</div>` : "";
   $("results").innerHTML = `
-    <div class="card"><p class="summary">${esc(d.summary)}</p><p class="m" style="margin:0">Ranked by Qloo for fans of ${esc(d.acts.map((a) => a.name).join(", "))}${d.city ? `, in ${esc(d.qlooCity || d.city)}` : ""}.</p></div>
+    <div class="card"><p class="summary">${esc(d.summary)}</p><p class="m" style="margin:0">Ranked by Qloo for fans of ${esc(d.acts.map((a) => a.name).join(", "))}${d.city ? `, in ${esc(d.qlooCity || d.city)}` : ""}. Bars span the lowest to the highest Qloo affinity shown.</p></div>
     ${d.bills.length ? `<div class="card"><h2>Bills you could announce</h2>${d.bills.map((b) => `<div class="bill"><b>${esc(b.headliner)}</b><span class="m">with</span><b style="font-weight:600">${esc(b.opener)}</b><span class="score" style="margin-left:auto" title="Qloo affinity of the opener with the headliner's fans">${f3(b.overlap)}</span></div>`).join("")}<p class="m" style="margin:6px 0 0">The number is how much the headliner's fans like the opener (Qloo affinity).</p></div>` : ""}
     ${inbox}
-    <div class="card"><h2>Acts that fit your crowd and size</h2>${d.fits.length ? d.fits.map((c) => actCard(c, max)).join("") : `<p class="m">Qloo found no acts in your size range.</p>`}</div>
-    ${d.openers.length ? `<div class="card"><h2>Openers and next-up acts</h2><p class="m" style="margin:0 0 8px">Same crowd, smaller than your usual acts: openers, off nights, or the ones to catch early.</p>${d.openers.map((c) => actCard(c, max)).join("")}</div>` : ""}
+    <div class="card"><h2>Acts that fit your crowd and size</h2>${d.fits.length ? d.fits.map((c) => actCard(c, lo, hi)).join("") : `<p class="m">Qloo found no acts in your size range.</p>`}</div>
+    ${d.openers.length ? `<div class="card"><h2>Openers and next-up acts</h2><p class="m" style="margin:0 0 8px">Same crowd, smaller than your usual acts: openers, off nights, or the ones to catch early.</p>${d.openers.map((c) => actCard(c, lo, hi)).join("")}</div>` : ""}
     ${howWeKnow(d)}`;
   wireRedo(d, body);
 }

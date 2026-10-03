@@ -120,3 +120,8 @@ test("the page labels a saved result, says Stopped on failure, and keeps the key
 test("the page says when your room isn't among the rooms that fit the top act", () => {
   assert.match(page, /isn't in Qloo's top \$\{d\.rivals\.rooms\.length\} for this act/);
 });
+
+test("the acts' bars span the lowest to the highest affinity shown (Qloo's are close together)", () => {
+  assert.match(page, /const w = hi > lo \? 20 \+ 80 \*/);
+  assert.match(page, /Bars span the lowest to the highest Qloo affinity shown/);
+});
