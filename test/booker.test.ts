@@ -429,6 +429,44 @@ test("Red Rocks, Denver: Qloo's amphitheatre record has no category and sits 50 
   const r = await resolveVenue({ search: async () => found } as any, "Red Rocks, Denver");
   assert.equal(`${r!.entity.name} ${r!.match}`, "Red Rocks Park and Amphitheatre ambiguous");
   assert.ok(r!.alternatives.some((a) => a.name === "Red Rocks Bar"), "the bar is offered");
+  for (const t of ["Red Rocks, CO", "Red Rocks, Colorado"]) {
+    const co = await resolveVenue({ search: async () => found } as any, t);
+    assert.equal(`${co!.entity.name} ${co!.match}`, "Red Rocks Park and Amphitheatre ambiguous", t);
+  }
+  assert.ok(!(await resolveVenue({ search: async () => found } as any, "Red Rocks, Denver"))!.alternatives.some((a) => a.name === "Red Rocks Cinema"), "a cinema isn't a room");
   const morrison = await resolveVenue({ search: async () => found } as any, "Red Rocks Park and Amphitheatre");
   assert.equal(`${morrison!.entity.name} ${morrison!.match}`, "Red Rocks Park and Amphitheatre exact");
+});
+
+test("twelfth pass: a longer name in the typed city, rooms by category, cities on one line", async () => {
+  const rams = [
+    { id: "1", name: "Rams Head Live!", types: [], categories: ["Live music venue"], city: "Baltimore", region: "Maryland", countryCode: "US", lat: 39.2887, lon: -76.6066 },
+    { id: "2", name: "Rams Head On Stage", types: [], categories: ["Live music venue"], city: "Annapolis", region: "Maryland", countryCode: "US", lat: 38.9784, lon: -76.4922 },
+  ];
+  const r = await resolveVenue({ search: async () => rams } as any, "Rams Head, Annapolis");
+  assert.equal(`${r!.entity.name} ${r!.match}`, "Rams Head On Stage closest");
+  assert.ok(r!.alternatives.some((a) => a.name === "Rams Head Live!"));
+  const room = (categories: string[], name = "x") => isRoom({ id: "x", name, types: [], categories });
+  assert.ok(room(["Movie theater", "Performing arts theater"]), "the Texas Theatre shows films and concerts");
+  assert.ok(!room(["Movie theater"]) && !room(["Museum", "Event venue"]) && !room([], "Red Rocks Country Club"));
+  assert.ok(room(["Museum", "Live music venue"]) && room([], "Red Rocks Park and Amphitheatre"));
+  assert.deepEqual(cityList("Chicago, Austin, Asheville").list, ["Chicago", "Austin", "Asheville"]);
+  assert.deepEqual(cityList("Austin, Texas, Chicago, Illinois").list, ["Austin, Texas", "Chicago, Illinois"]);
+  assert.deepEqual(cityList("Austin, Texas\nLondon, United Kingdom\nPortland, Maine").list, ["Austin, Texas", "London, United Kingdom", "Portland, Maine"]);
+});
+
+test("a city Qloo resolves but answers nothing for is dropped as a signal, and the trace says so (seen live: Indian Hills)", async () => {
+  const m = mockFetch((c) =>
+    insights(c, "urn:entity:artist") && c.params.get("signal.location.query") && !c.params.get("filter.results.entities")
+      ? { body: { results: { entities: [] }, query: { localities: { signal: { name: "Chicago", location: { lat: 41.84, lon: -87.69 } } } } } }
+      : standardQloo()(c),
+  );
+  try {
+    const r = await forVenue(ENV(memoryKV().kv), new Budget(48), { venue: { name: "Empty Bottle, Chicago" }, acts: PAST.map((a) => ({ name: a.name })), pitches: [], rising: false });
+    assert.ok(r.fits.length > 0);
+    assert.equal(r.city, undefined);
+    assert.ok(r.trace.some((t) => t.step === "City" && /no answers with "Chicago, Illinois"/.test(t.detail)));
+  } finally {
+    m.restore();
+  }
 });

@@ -198,6 +198,17 @@ export async function forVenue(
     try {
       const r = await q.artists({ ...o, city });
       if (r.locality && !qlooCity) qlooCity = r.locality.name;
+      // Seen live: a small town (Indian Hills, for Red Rocks) resolves but returns nothing at all. Ask again
+      // without it, and say so, rather than report that nothing fits the room's size.
+      if (!r.list.length && city && !o.only) {
+        const plain = (await q.artists({ ...o, city: undefined })).list;
+        if (plain.length) {
+          trace.push({ step: "City", detail: `Qloo had no answers with "${city}" as a signal, so the city isn't part of the ranking` });
+          city = undefined;
+          qlooCity = undefined;
+          return plain;
+        }
+      }
       return r.list;
     } catch (e) {
       // Measured: Qloo answers 400 when it can't resolve the city; ask again without it, and say so.

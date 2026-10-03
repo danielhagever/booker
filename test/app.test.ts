@@ -211,3 +211,7 @@ test("MCP: the artist answer names the cities it left out", async () => {
     m.restore();
   }
 });
+
+test("the page offers Not it? whenever Qloo had other candidates, so a wrong exact match can be put right", () => {
+  assert.match(page, /const choose = p\.match !== "chosen" && p\.alternatives\.length/);
+});

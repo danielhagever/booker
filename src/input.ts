@@ -57,8 +57,36 @@ export function names(v: unknown, max: number): { list: Named[]; leftOut: string
   return { list: all.slice(0, max), leftOut: all.slice(max).map((n) => n.name) };
 }
 
+// Cities: one per line or separated by semicolons ("Austin, Texas" keeps its comma). A line of several
+// cities with commas ("Chicago, Austin, Asheville") is split too: a part that is a state, province or
+// country stays with the city before it ("Austin, Texas, Chicago, Illinois" is two cities).
+const REGIONS = new Set(
+  ("alabama al alaska ak arizona az arkansas ar california ca colorado co connecticut ct delaware de florida fl georgia ga hawaii hi " +
+    "idaho id illinois il indiana in iowa ia kansas ks kentucky ky louisiana la maine me maryland md massachusetts ma michigan mi " +
+    "minnesota mn mississippi ms missouri mo montana mt nebraska ne nevada nv ohio oh oklahoma ok oregon or pennsylvania pa " +
+    "tennessee tn texas tx utah ut vermont vt virginia va washington wa wisconsin wi wyoming wy dc ontario on quebec qc alberta ab " +
+    "manitoba mb usa us uk england scotland wales ireland canada mexico germany france spain italy portugal netherlands belgium " +
+    "sweden norway denmark finland poland austria switzerland australia japan brazil argentina israel")
+    .split(" "),
+);
+const MULTI_REGIONS = ["new york", "new jersey", "new mexico", "new hampshire", "north carolina", "south carolina", "north dakota", "south dakota", "rhode island", "west virginia", "district of columbia", "british columbia", "nova scotia", "united kingdom", "united states", "new zealand", "south korea", "czech republic"];
+const isRegion = (p: string) => {
+  const k = p.trim().toLowerCase().replace(/\./g, "");
+  return REGIONS.has(k) || MULTI_REGIONS.includes(k);
+};
+function splitCities(line: string): string[] {
+  const parts = line.split(",");
+  if (parts.length < 3 && !(parts.length === 2 && !isRegion(parts[1]))) return [line];
+  const out: string[] = [];
+  for (const p of parts) {
+    if (out.length && isRegion(p) && !out[out.length - 1].includes(",")) out[out.length - 1] += `,${p}`;
+    else out.push(p);
+  }
+  return out;
+}
+
 export function cityList(v: unknown): { list: string[]; leftOut: string[] } {
-  const raw: unknown[] = typeof v === "string" ? v.split(/[;\n|]+/) : Array.isArray(v) ? v : [];
+  const raw: unknown[] = typeof v === "string" ? v.split(/[;\n|]+/).flatMap(splitCities) : Array.isArray(v) ? v : [];
   const all = [...new Set(raw.map((c) => clean(c)).filter((c) => c.length >= 2))];
   return { list: all.slice(0, MAX_CITIES), leftOut: all.slice(MAX_CITIES) };
 }

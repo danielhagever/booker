@@ -211,7 +211,8 @@ $("goArtist").onclick = () => post("/api/artist", { artist: $("artist").value, c
 // "Not it?": a name that wasn't one exact match can be swapped for another Qloo candidate, by ID.
 function pickRow(p, key, kind) {
   const badge = p.match === "closest" ? `<span class="badge">closest match</span>` : p.match === "ambiguous" ? `<span class="badge">several share this name</span>` : p.match === "chosen" ? `<span class="badge">your choice</span>` : "";
-  const choose = (p.match === "closest" || p.match === "ambiguous") && p.alternatives.length
+  // Offered whenever Qloo had other candidates, so even a wrong "exact" can be put right.
+  const choose = p.match !== "chosen" && p.alternatives.length
     ? `<label class="m" for="${key}" style="margin:0">Not it?</label><select id="${key}" data-kind="${kind}" data-input="${esc(p.input)}"><option value="">${esc(p.name)}</option>${p.alternatives.map((a) => `<option value="${esc(a.id)}" data-name="${esc(a.name)}">${esc(a.name)}${a.note ? ` · ${esc(a.note)}` : ""}</option>`).join("")}</select>`
     : "";
   return `<div class="pick"><span>${esc(p.input)} → <b>${esc(p.name)}</b></span>${badge}${choose}</div>`;
@@ -245,7 +246,7 @@ function renderVenue(d, body) {
   const affs = [...d.fits, ...d.openers].map((c) => c.affinity).filter((a) => a !== undefined);
   const lo = Math.min(...affs, 1), hi = Math.max(...affs, 0);
   const picks = [pickRow(d.venue, "altV", "venue"), ...d.acts.map((a, i) => pickRow(a, `altA${i}`, "act"))].join("");
-  const unsure = [d.venue, ...d.acts].some((p) => (p.match === "closest" || p.match === "ambiguous") && p.alternatives.length);
+  const unsure = [d.venue, ...d.acts].some((p) => p.match !== "chosen" && p.alternatives.length);
   $("side").innerHTML = `
     <div class="card"><h2>Matched in Qloo</h2>
       <div class="m" style="margin-bottom:6px">${esc(d.venue.name)}${d.venue.address ? ` · ${esc(d.venue.address)}` : ""}${d.qlooCity ? ` · Qloo city: ${esc(d.qlooCity)}` : ""}</div>
@@ -287,7 +288,7 @@ function renderArtist(d) {
     <div class="m" style="margin-top:6px">${(a.genres || []).map((g) => `<span class="tag">${esc(g)}</span>`).join("")} popularity ${f3(a.popularity)}</div>
     ${d.notFound.length ? `<div class="m" style="margin-top:6px">Not placed: ${esc(d.notFound.join(", "))}</div>` : ""}
     ${d.leftOut && d.leftOut.length ? `<div class="m">Not used (up to 5): ${esc(d.leftOut.join(", "))}</div>` : ""}
-    ${(a.match === "closest" || a.match === "ambiguous") && a.alternatives.length ? `<button class="redo" id="redoArtist" disabled>Update with my choice</button>` : ""}</div>`;
+    ${a.match !== "chosen" && a.alternatives.length ? `<button class="redo" id="redoArtist" disabled>Update with my choice</button>` : ""}</div>`;
   $("results").innerHTML = `
     <div class="card"><p class="summary">${esc(d.summary)}</p><p class="m" style="margin:0">Cities are ordered by Qloo's affinity for ${esc(a.name)} with the city as the signal; rooms by Qloo's affinity of each venue's visitors with ${esc(a.name)}'s fans.</p></div>
     ${d.cities.map((c, i) => `<div class="city" tabindex="0" role="button" data-i="${i}" aria-label="Show ${esc(c.label)} on the map">
