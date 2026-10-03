@@ -50,12 +50,13 @@ function wordsResemble(a: string[], b: string[], half: boolean): boolean {
 }
 
 // A venue is typed with its city ("Bowery Ballroom New York City", "Troubadour Los Angeles"), so the
-// words of the candidate's own city and state don't count on either side, and the room's name may sit
-// inside the typed text. Otherwise the city's words would pick any place named after the city (live:
-// Resorts World New York City for the Bowery Ballroom).
-export function venueResembles(typed: string, e: Entity): boolean {
-  const place = new Set(words([e.city, e.region, e.country].filter(Boolean).join(" ")));
-  const own = (w: string) => !place.has(w);
+// words of the candidates' cities and states don't count on either side (`places`: every candidate's,
+// since some records have no city), and the room's name may sit inside the typed text. Otherwise the
+// city's words would pick any place named after the city (live: Resorts World New York City for the
+// Bowery Ballroom).
+export const placeWords = (es: Entity[]) => new Set(es.flatMap((e) => words([e.city, e.region, e.country].filter(Boolean).join(" "))));
+export function venueResembles(typed: string, e: Entity, places = placeWords([e])): boolean {
+  const own = (w: string) => !places.has(w);
   return wordsResemble(words(typed).filter(own), words(e.name).filter(own), false);
 }
 
@@ -94,7 +95,8 @@ export async function resolveVenue(q: Qloo, input: string): Promise<Resolved | n
   // Among places with the same name, one Qloo files as a music venue comes first (stable otherwise).
   const found = (await q.search(input.replace(/,/g, " "), "urn:entity:place", 8)).filter(isRoom).sort(musicFirst);
   const exact = found.filter((e) => nameKey(e.name) === nameKey(name) || nameKey(e.name).startsWith(nameKey(name) + " "));
-  const list = found.filter((e) => exact.includes(e) || venueResembles(name, e));
+  const places = placeWords(found);
+  const list = found.filter((e) => exact.includes(e) || venueResembles(name, e, places));
   if (!list.length) return null;
   const pick = exact[0] ?? list[0];
   return {

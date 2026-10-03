@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { forArtist, forVenue, sizeOf, fromSize, cityOf } from "../src/booker.ts";
-import { resembles, nameKey, isRoom, venueResembles } from "../src/resolve.ts";
+import { resembles, nameKey, isRoom, venueResembles, placeWords } from "../src/resolve.ts";
 import { names, cityList } from "../src/input.ts";
 import { Budget } from "../src/limits.ts";
 import { ENV, UUID, artist, memoryKV, mockFetch, venue, type Call } from "./mock.ts";
@@ -322,4 +322,7 @@ test("a venue typed with its city, no comma: the room's name decides, not the ci
   assert.ok(venueResembles("Fillmore San Francisco", place("The Fillmore", "San Francisco", "California")));
   assert.ok(!venueResembles("Fillmore San Francisco", place("San Francisco Symphony", "San Francisco", "California")));
   assert.ok(venueResembles("Antone's", place("Antone's Nightclub", "Austin", "Texas")) && venueResembles("Mohawk", place("Mohawk Austin", "Austin", "Texas")));
+  // A record without a city: the other candidates' city words still don't count.
+  const nycc = { id: "y", name: "New York City Center", types: [] };
+  assert.ok(!venueResembles(typed, nycc, placeWords([place("The Bowery Ballroom", "New York", "New York"), nycc])));
 });
