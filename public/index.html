@@ -287,7 +287,12 @@ function renderArtist(d) {
   if (!map) { map = L.map("map", { scrollWheelZoom: false }); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap contributors" }).addTo(map); layer = L.layerGroup().addTo(map); }
   layer.clearLayers();
   const pts = [];
-  d.cities.forEach((c) => c.rooms.forEach((r) => { if (r.lat && r.lon) { pts.push([r.lat, r.lon]); L.circleMarker([r.lat, r.lon], { radius: 4 + 6 * ((r.affinity ?? 0) / maxRoom), color: "#ff6a3d", fillOpacity: 0.85 }).bindTooltip(`${esc(r.name)} (${esc(c.label.split(",")[0])})`).addTo(layer); } }));
+  // Each city's top three rooms are named on the map once it is zoomed into a city (zoomed out, the
+  // names of one city would pile up on one spot).
+  const top = [];
+  d.cities.forEach((c) => c.rooms.forEach((r, i) => { if (r.lat && r.lon) { pts.push([r.lat, r.lon]); const m = L.circleMarker([r.lat, r.lon], { radius: 4 + 6 * ((r.affinity ?? 0) / maxRoom), color: "#ff6a3d", fillOpacity: 0.85 }).bindTooltip(`${esc(r.name)} (${esc(c.label.split(",")[0])})`, { direction: "top" }).addTo(layer); if (i < 3) top.push(m); } }));
+  const names = () => top.forEach((m) => (map.getZoom() >= 11 ? m.openTooltip() : m.closeTooltip()));
+  map.off("zoomend"); map.on("zoomend", names);
   map.invalidateSize();
   if (pts.length) map.fitBounds(pts, { padding: [30, 30], maxZoom: 12 });
   document.querySelectorAll(".city").forEach((el) => {
