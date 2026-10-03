@@ -450,15 +450,8 @@ test("twelfth pass: a longer name in the typed city, rooms by category, cities o
   assert.ok(room(["Movie theater", "Performing arts theater"]), "the Texas Theatre shows films and concerts");
   assert.ok(!room(["Movie theater"]) && !room(["Museum", "Event venue"]) && !room([], "Red Rocks Country Club"));
   assert.ok(room(["Museum", "Live music venue"]) && room([], "Red Rocks Park and Amphitheatre"));
-  assert.deepEqual(cityList("Chicago, Austin, Asheville").list, ["Chicago", "Austin", "Asheville"]);
-  const unclear = cityList("Boston, New York, Philadelphia, Washington\nAustin, Texas, Chicago, Illinois\nAsheville, NC");
-  assert.deepEqual(unclear.list, ["Asheville, NC"], "a line that could be read two ways isn't guessed at");
-  assert.deepEqual(unclear.leftOut, ["Boston, New York, Philadelphia, Washington (one city per line, please)", "Austin, Texas, Chicago, Illinois (one city per line, please)"]);
-  assert.deepEqual(cityList("Melbourne, Victoria\nSan Juan, PR\nSydney, NSW\nAuckland, NZ\nParis, FR").list, ["Melbourne, Victoria", "San Juan, PR", "Sydney, NSW", "Auckland, NZ", "Paris, FR"], "seen live: Victoria and PR were cities");
-  assert.deepEqual(cityList("NYC, LA, Chicago").list, [], "LA is also Louisiana: not guessed");
-  assert.deepEqual(cityList("Austin, Texas\nLondon, United Kingdom\nPortland, Maine").list, ["Austin, Texas", "London, United Kingdom", "Portland, Maine"]);
-  assert.deepEqual(cityList("Brooklyn, NY\nAsheville, NC\nChicago, IL\nAustin, TX").list, ["Brooklyn, NY", "Asheville, NC", "Chicago, IL", "Austin, TX"], "seen live: NY and NC were cities");
-  assert.deepEqual(cityList("Charleston, WV; Austin, TX, USA; Portland, Ore.; Toronto, ON; Reykjavik, Iceland").list, ["Charleston, WV", "Austin, TX, USA", "Portland, Ore.", "Toronto, ON", "Reykjavik, Iceland"]);
+  // A line isn't split on commas: "Chicago, Austin" can't be told from "Austin, Texas" without guessing.
+  assert.deepEqual(cityList("Austin, Texas\nMelbourne, Victoria; San Juan, PR\nChicago, Austin").list, ["Austin, Texas", "Melbourne, Victoria", "San Juan, PR", "Chicago, Austin"]);
 });
 
 test("a city Qloo resolves but answers nothing for is dropped as a signal, and the trace says so (seen live: Indian Hills)", async () => {
@@ -489,6 +482,19 @@ test("when only the openers come back empty with the city, the city still shapes
     assert.ok(r.openers.length > 0 && r.rivals.rooms.length > 0);
     assert.ok(r.trace.some((t) => t.step === "City" && /no openers .* so those are ranked without the city/.test(t.detail)));
     assert.ok(r.trace.some((t) => t.step === "Shortlist" && /acts that fit in Chicago and \d+ openers for fans of your acts$/.test(t.detail)), "the shortlist says the city shaped only the fits");
+  } finally {
+    m.restore();
+  }
+});
+
+test("a city whose comma part doesn't match is placed by its name, and the answer says how it was read", async () => {
+  const m = mockFetch(standardQloo());
+  try {
+    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Chicago, Austin", "Austin, Texas"] });
+    const chi = r.cities.find((c) => c.label === "Chicago, Illinois")!;
+    assert.match(chi.note!, /"Chicago, Austin" was read as Chicago, Illinois; "Austin" didn't match its state or country/);
+    assert.equal(r.cities.find((c) => c.label === "Austin, Texas")!.note, undefined);
+    assert.ok(r.trace.some((t) => t.step === "Check" && /was read as Chicago, Illinois/.test(t.detail)));
   } finally {
     m.restore();
   }

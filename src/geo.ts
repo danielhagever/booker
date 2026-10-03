@@ -11,6 +11,9 @@ export interface Place {
   lon: number;
   name: string; // what the page shows, e.g. "Portland, Maine"
   query: string; // what Qloo is asked for: the same city, spelled out
+  // Set when what came after the comma isn't this city's state or country ("Chicago, Austin"): the city
+  // was then taken as the most populous of its name, and the answer says how it was read.
+  unmatched?: string;
 }
 
 const US_STATES: Record<string, string> = {
@@ -47,7 +50,7 @@ async function kvPut(cache: KVNamespace, budget: Budget, key: string, value: unk
 // fetch several candidates and prefer the one whose state or country matches what came after the
 // comma; otherwise take the most populous.
 export async function cityCenter(cache: KVNamespace, budget: Budget, city: string): Promise<Place | null> {
-  const key = `city3:${city.toLowerCase()}`;
+  const key = `city4:${city.toLowerCase()}`;
   const hit = await kvGet(cache, budget, key);
   if (hit) return hit as Place;
   const [name, ...rest] = city.split(",").map((x) => x.trim());
@@ -78,7 +81,8 @@ export async function cityCenter(cache: KVNamespace, budget: Budget, city: strin
   // "New York, New York" as the city (measured).
   const region = r.country_code === "US" || r.country_code === "CA" ? r.admin1 : r.country;
   const label = `${r.name}${region ? ", " + region : ""}`;
-  const out: Place = { lat: r.latitude, lon: r.longitude, name: label, query: label };
+  const typedRegion = rest.filter(Boolean).join(", ");
+  const out: Place = { lat: r.latitude, lon: r.longitude, name: label, query: label, ...(typedRegion && !matches.length ? { unmatched: typedRegion } : {}) };
   await kvPut(cache, budget, key, out, 60 * 60 * 24 * 30);
   return out;
 }

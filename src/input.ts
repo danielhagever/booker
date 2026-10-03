@@ -57,46 +57,11 @@ export function names(v: unknown, max: number): { list: Named[]; leftOut: string
   return { list: all.slice(0, max), leftOut: all.slice(max).map((n) => n.name) };
 }
 
-// Cities: one per line or separated by semicolons. A line with one comma is one city ("Austin, Texas",
-// "Melbourne, Victoria"), and so is "City, State, Country". A line of city names with commas and no state
-// or country among them ("Chicago, Austin, Asheville") is split. Anything else ("Boston, New York,
-// Philadelphia, Washington": New York and Washington are states too) isn't guessed at: it is reported as
-// not used, with a note to put one city per line.
-const STATES: [string, string, string?][] = [
-  ["alabama", "al", "ala"], ["alaska", "ak"], ["arizona", "az", "ariz"], ["arkansas", "ar", "ark"], ["california", "ca", "calif"],
-  ["colorado", "co", "colo"], ["connecticut", "ct", "conn"], ["delaware", "de", "del"], ["district of columbia", "dc"], ["florida", "fl", "fla"],
-  ["georgia", "ga"], ["hawaii", "hi"], ["idaho", "id"], ["illinois", "il", "ill"], ["indiana", "in", "ind"], ["iowa", "ia"], ["kansas", "ks", "kan"],
-  ["kentucky", "ky"], ["louisiana", "la"], ["maine", "me"], ["maryland", "md"], ["massachusetts", "ma", "mass"], ["michigan", "mi", "mich"],
-  ["minnesota", "mn", "minn"], ["mississippi", "ms", "miss"], ["missouri", "mo"], ["montana", "mt", "mont"], ["nebraska", "ne", "neb"],
-  ["nevada", "nv", "nev"], ["new hampshire", "nh"], ["new jersey", "nj"], ["new mexico", "nm"], ["new york", "ny"], ["north carolina", "nc"],
-  ["north dakota", "nd"], ["ohio", "oh"], ["oklahoma", "ok", "okla"], ["oregon", "or", "ore"], ["pennsylvania", "pa", "penn"],
-  ["rhode island", "ri"], ["south carolina", "sc"], ["south dakota", "sd"], ["tennessee", "tn", "tenn"], ["texas", "tx", "tex"], ["utah", "ut"],
-  ["vermont", "vt"], ["virginia", "va"], ["washington", "wa", "wash"], ["west virginia", "wv", "wva"], ["wisconsin", "wi", "wis"],
-  ["wyoming", "wy", "wyo"], ["ontario", "on", "ont"], ["quebec", "qc"], ["british columbia", "bc"], ["alberta", "ab", "alta"],
-  ["manitoba", "mb"], ["saskatchewan", "sk"], ["nova scotia", "ns"], ["new brunswick", "nb"], ["newfoundland and labrador", "nl"],
-  ["prince edward island", "pe"],
-];
-const COUNTRIES = (
-  "usa,us,united states,united states of america,uk,united kingdom,great britain,england,scotland,wales,northern ireland,ireland,canada,mexico," +
-  "germany,france,spain,italy,portugal,netherlands,the netherlands,belgium,luxembourg,switzerland,austria,denmark,sweden,norway,finland,iceland," +
-  "poland,czech republic,czechia,hungary,greece,turkey,israel,australia,new zealand,japan,south korea,korea,china,taiwan,india,brazil,argentina," +
-  "chile,colombia,peru,south africa"
-).split(",");
-const REGIONS = new Set([...STATES.flat().filter((x): x is string => !!x), ...COUNTRIES]);
-const isRegion = (p: string) => REGIONS.has(p.trim().toLowerCase().replace(/\./g, "").replace(/\s+/g, " "));
-const UNCLEAR = " (one city per line, please)";
-function splitCities(line: string): string[] {
-  const parts = line.split(",");
-  if (parts.length <= 2) return [line];
-  if (parts.length === 3 && isRegion(parts[1]) && isRegion(parts[2])) return [line];
-  if (!parts.slice(1).some(isRegion)) return parts;
-  return [line + UNCLEAR];
-}
-
+// Cities: one per line or separated by semicolons; a comma belongs to the city ("Austin, Texas"). A line
+// isn't split on commas: "Chicago, Austin" can't be told from "Austin, Texas" here, so the geocoder reads it
+// and the answer says how (see geo.ts), rather than a guess losing a city.
 export function cityList(v: unknown): { list: string[]; leftOut: string[] } {
-  const raw: unknown[] = typeof v === "string" ? v.split(/[;\n|]+/).flatMap(splitCities) : Array.isArray(v) ? v : [];
-  const all = [...new Set(raw.map((c) => clean(c, 160)).filter((c) => c.length >= 2))];
-  const unclear = all.filter((c) => c.endsWith(UNCLEAR));
-  const usable = all.filter((c) => !c.endsWith(UNCLEAR)).map((c) => c.slice(0, MAX_NAME));
-  return { list: usable.slice(0, MAX_CITIES), leftOut: [...unclear, ...usable.slice(MAX_CITIES).map((c) => `${c} (more than ${MAX_CITIES})`)] };
+  const raw: unknown[] = typeof v === "string" ? v.split(/[;\n|]+/) : Array.isArray(v) ? v : [];
+  const all = [...new Set(raw.map((c) => clean(c)).filter((c) => c.length >= 2))];
+  return { list: all.slice(0, MAX_CITIES), leftOut: all.slice(MAX_CITIES) };
 }

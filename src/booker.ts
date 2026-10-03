@@ -73,6 +73,7 @@ export interface TourResult extends Trace {
     lat: number;
     lon: number;
     qlooCity?: string;
+    note?: string; // how a city was read when what followed its comma didn't match it
     affinity?: number; // how much the city's taste likes the act (Qloo)
     rooms: { name: string; id: string; address?: string; lat?: number; lon?: number; affinity?: number; categories?: string[] }[];
   }[];
@@ -426,9 +427,12 @@ export async function forArtist(
       continue;
     }
     const rooms = await q.venues([a.id], c.query, 6);
+    const note = c.unmatched ? `"${text}" was read as ${c.name}; "${c.unmatched}" didn't match its state or country, so check this is the city you meant.` : undefined;
+    if (note) trace.push({ step: "Check", detail: note });
     cities.push({
       input: text,
       label: c.name,
+      ...(note ? { note } : {}),
       lat: c.lat,
       lon: c.lon,
       ...(qlooCity ? { qlooCity } : {}),

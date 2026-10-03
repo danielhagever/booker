@@ -287,13 +287,14 @@ function renderArtist(d) {
   $("side").innerHTML = `<div class="card"><h2>Matched in Qloo</h2><div id="picks">${pickRow(a, "altArtist", "artist")}</div>
     <div class="m" style="margin-top:6px">${(a.genres || []).map((g) => `<span class="tag">${esc(g)}</span>`).join("")} popularity ${f3(a.popularity)}</div>
     ${d.notFound.length ? `<div class="m" style="margin-top:6px">Not placed: ${esc(d.notFound.join(", "))}</div>` : ""}
-    ${d.leftOut && d.leftOut.length ? `<div class="m">Not used: ${esc(d.leftOut.join("; "))}</div>` : ""}
+    ${d.leftOut && d.leftOut.length ? `<div class="m">Not used (up to 5): ${esc(d.leftOut.join("; "))}</div>` : ""}
     ${a.match !== "chosen" && a.alternatives.length ? `<button class="redo" id="redoArtist" disabled>Update with my choice</button>` : ""}</div>`;
   $("results").innerHTML = `
     <div class="card"><p class="summary">${esc(d.summary)}</p><p class="m" style="margin:0">Cities are ordered by Qloo's affinity for ${esc(a.name)} with the city as the signal; rooms by Qloo's affinity of each venue's visitors with ${esc(a.name)}'s fans.</p></div>
     ${d.cities.map((c, i) => `<div class="city" tabindex="0" role="button" data-i="${i}" aria-label="Show ${esc(c.label)} on the map">
       <div class="top" style="display:flex;justify-content:space-between;gap:10px"><h3>#${i + 1} ${esc(c.label)}</h3><span class="score">${c.affinity !== undefined ? f3(c.affinity) : "no city score"}</span></div>
       ${c.qlooCity ? `<div class="m">Qloo city: ${esc(c.qlooCity)}</div>` : ""}
+      ${c.note ? `<div class="m" style="color:var(--warn)">${esc(c.note)}</div>` : ""}
       ${c.rooms.length ? c.rooms.map((r) => `<div class="row"><span><b>${esc(r.name)}</b>${r.address ? `<br><span class="m">${esc(r.address)}</span>` : ""}</span><span class="score">${f3(r.affinity)}</span></div>`).join("") : `<p class="m">Qloo returned no live music venues here.</p>`}</div>`).join("")}
     ${howWeKnow(d)}`;
   // The map: every room, colored by how well it fits.
