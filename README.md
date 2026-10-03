@@ -82,7 +82,7 @@ When a name was only a closest match, the tool's answer says so and lists the al
 2. **Size:** the acts sit between 0.973 and 0.993 on Qloo's popularity scale.
 3. **Acts that fit** (fans of your acts, in Austin, at your size): Allah-Las, King Gizzard & The Lizard Wizard, Kevin Morby, Khruangbin, The Growlers, White Denim, Courtney Barnett, Temples. **Openers:** Benjamin Booker, The Arcs, Ron Gallo, Golden Dawn Arkestra, The Nude Party.
 4. **Bills:** Allah-Las with Kikagaku Moyo; King Gizzard & The Lizard Wizard with The Nude Party; Kevin Morby with Benjamin Booker.
-5. **Inbox:** Khruangbin fits your room; Wet Leg fits your room; Morgan Wallen is off your crowd's taste (0.83, below 0.88).
+5. **Inbox:** Khruangbin fits your room; Wet Leg fits your room; Morgan Wallen is off your crowd's taste (0.83, below 0.84).
 6. **Competition:** Qloo's top room in Austin for Allah-Las's fans is Mohawk Austin itself, then Swan Dive and Hotel Vegas.
 
 20 Qloo calls, 8.9 seconds; the page lists each one.
