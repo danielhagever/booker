@@ -24,11 +24,12 @@ const CATALOG = [
   artist(27, "Skrillex", 0.999, ["Dubstep"]),
   artist(28, "Anna Burch", 0.85),
   artist(29, "Big Thief", 0.991),
+  artist(30, "Beach House", 0.999, ["Dream Pop"]),
 ];
 // Taste: how much fans of the indie acts like each artist (Qloo affinity), as measured for real acts.
 const TASTE: Record<string, number> = {
   "Soccer Mommy": 0.984, "Slow Pulp": 0.983, Dehd: 0.95, "Alex G": 0.98, "Dirt Buyer": 0.954, Jodi: 0.966,
-  "Turnpike Troubadours": 0.806, Skrillex: 0.651, "Anna Burch": 0.969, "Big Thief": 0.982,
+  "Turnpike Troubadours": 0.806, Skrillex: 0.651, "Anna Burch": 0.969, "Big Thief": 0.982, "Beach House": 0.88,
   Wednesday: 0.99, Hovvdy: 0.99, "Horse Jumper of Love": 0.99, "Snail Mail": 0.99,
 };
 const ROOMS = [venue(1, "The Empty Bottle", "Chicago", "Illinois"), venue(2, "Bottled Blonde", "Chicago", "Illinois", ["Restaurant", "Sports bar"]), venue(3, "Empty Bottle Records", "Chicago", "Illinois", ["Record store"])];
@@ -236,4 +237,11 @@ test("the room keeps its city on the page even when Qloo can't use the city as a
   const { r } = await run({}, { unknownCity: true });
   assert.equal(r.city, undefined);
   assert.equal(r.venue.city, "Chicago, Illinois");
+});
+
+test("taste is judged with room for a near genre: 0.07 below Qloo's picks still fits, 0.10 doesn't (measured live)", async () => {
+  const { r } = await run({ pitches: [{ name: "Beach House" }, { name: "Turnpike Troubadours" }] });
+  const v = Object.fromEntries(r.inbox.map((p) => [p.name, p.verdict]));
+  assert.equal(v["Beach House"], "bigger", "dream pop next to indie rock is the same crowd; it's the size that doesn't fit");
+  assert.equal(v["Turnpike Troubadours"], "off-taste");
 });

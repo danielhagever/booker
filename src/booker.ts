@@ -135,6 +135,7 @@ const fmt3 = (n?: number) => (n === undefined ? "?" : n.toFixed(3)); // populari
 export const sizeOf = (p: number) => -Math.log10(1 - Math.min(p, 0.9995));
 export const fromSize = (s: number) => 1 - 10 ** -s;
 const WIDEN = 0.1;
+const TASTE_GAP = 0.09;
 
 export async function forVenue(
   env: QlooEnv,
@@ -253,9 +254,12 @@ export async function forVenue(
     const refs = fits.slice(0, 3).map((f) => f.id).filter((id) => !p.found.some((r) => r.entity.id === id));
     const ids = [...p.found.map((r) => r.entity.id), ...refs];
     const scored = p.found.length ? (await q.artists({ entities: actIds, only: ids, take: ids.length })).list : [];
-    // Taste floor (Booker's rule): more than 0.05 below the yardstick isn't your crowd's taste.
+    // Taste floor (Booker's rule): more than 0.09 below the yardstick isn't your crowd's taste. Set from
+    // 10 live pitches at 4 rooms (2026-10-03): fits sat 0.045-0.074 below (Wet Leg at Mohawk, Kingfish at
+    // Antone's, Beach House at the Bowery), clear misses 0.102-0.164 below (Morgan Wallen at Mohawk, Bad
+    // Bunny at the Bowery, Black Pumas at Antone's, Turnpike Troubadours at the Empty Bottle).
     const refAff = scored.filter((x) => refs.includes(x.id)).map((x) => x.affinity).filter((a): a is number => a !== undefined);
-    const floor = (refAff.length ? Math.min(...refAff) : 0.95) - 0.05;
+    const floor = (refAff.length ? Math.min(...refAff) : 0.95) - TASTE_GAP;
     for (const r of p.found) {
       const s = scored.find((x) => x.id === r.entity.id);
       const pop = r.entity.popularity;
@@ -332,7 +336,7 @@ export async function forVenue(
       "The closest act of yours is the one whose fans give the candidate the highest Qloo affinity (your first four acts are compared).",
       "A bill pairs one of the top three acts with the opener whose fans overlap most; each opener is used once.",
       ...(input.pitches.length
-        ? ["A pitch is off your crowd's taste when its affinity is more than 0.05 below three of Qloo's picks for your crowd, scored in the same call; bigger or smaller compares its popularity with the range above."]
+        ? ["A pitch is off your crowd's taste when its affinity is more than 0.09 below three of Qloo's picks for your crowd, scored in the same call (set from live pitches at four rooms); bigger or smaller compares its popularity with the range above."]
         : []),
     ],
     limits: [

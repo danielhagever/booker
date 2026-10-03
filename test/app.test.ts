@@ -125,3 +125,7 @@ test("the acts' bars span the lowest to the highest affinity shown (Qloo's are c
   assert.match(page, /const w = hi > lo \? 20 \+ 80 \*/);
   assert.match(page, /Bars span the lowest to the highest Qloo affinity shown/);
 });
+
+test("switching tabs clears the other side's answer", () => {
+  assert.match(page, /\$\("results"\)\.innerHTML = intro; \$\("side"\)\.innerHTML = ""/);
+});

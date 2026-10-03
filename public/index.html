@@ -157,8 +157,13 @@ fetch("/api/status").then((r) => r.json()).then((s) => {
   if (!s.qloo) { $("banner").hidden = false; $("banner").textContent = "Live Qloo access is being set up. Searches will work as soon as the API key is active."; }
 }).catch(() => {});
 
+const intro = $("results").innerHTML;
+// A tab shows its own side only: the other side's answer is cleared, and the intro comes back.
 function tab(which) {
   const venue = which === "venue";
+  if ($("tabVenue").getAttribute("aria-selected") !== String(venue)) {
+    $("results").innerHTML = intro; $("side").innerHTML = ""; $("progress").hidden = true; $("map").hidden = true;
+  }
   $("tabVenue").setAttribute("aria-selected", String(venue)); $("tabArtist").setAttribute("aria-selected", String(!venue));
   $("venueForm").hidden = !venue; $("artistForm").hidden = venue;
 }
