@@ -242,8 +242,9 @@ test("helpers: resemblance, names without 'the', music rooms, city spelling, lis
   assert.deepEqual(names('"Tyler, the Creator", \u201cBlack Country, New Road\u201d; Wet Leg\nBlack Pumas, Shakey Graves', 8).list.map((n) => n.name), ["Tyler, the Creator", "Black Country, New Road", "Wet Leg", "Black Pumas", "Shakey Graves"]);
   assert.deepEqual(names("\u201eTyler, the Creator\u201c, \u00abBlack Country, New Road\u00bb, Wet Leg", 8).list.map((n) => n.name), ["Tyler, the Creator", "Black Country, New Road", "Wet Leg"]);
   assert.deepEqual(names('"Tyler, the Creator, Wednesday', 8).list.map((n) => n.name), ["Tyler", "the Creator", "Wednesday"], "an unclosed quote doesn't swallow the list");
-  assert.deepEqual(names("'Tyler, the Creator', \u201eBlack Country, New Road\u201d, 'Guns N' Roses', Antone's", 8).list.map((n) => n.name), ["Tyler, the Creator", "Black Country, New Road", "Guns N' Roses", "Antone's"]);
-  assert.deepEqual(names("\u2018Tyler, the Creator\u2019, Antone\u2019s, Wednesday", 8).list.map((n) => n.name), ["Tyler, the Creator", "Antone\u2019s", "Wednesday"]);
+  assert.deepEqual(names("\u201eBlack Country, New Road\u201d, Guns N' Roses, Antone's", 8).list.map((n) => n.name), ["Black Country, New Road", "Guns N' Roses", "Antone's"]);
+  assert.deepEqual(names("'Til Tuesday, Wednesday, Keb' Mo'", 8).list.map((n) => n.name), ["'Til Tuesday", "Wednesday", "Keb' Mo'"], "apostrophes never quote");
+  assert.deepEqual(names("\u2018Til Tuesday, Antone\u2019s, Keb\u2019 Mo\u2019", 8).list.map((n) => n.name), ["\u2018Til Tuesday", "Antone\u2019s", "Keb\u2019 Mo\u2019"]);
   assert.deepEqual(names("\u201868, \u201cTyler, the Creator\u201d, Earl Sweatshirt", 8).list.map((n) => n.name), ["\u201868", "Tyler, the Creator", "Earl Sweatshirt"], "a leading apostrophe isn't a quote");
   assert.deepEqual(names([{ name: "Twins", id: "not-an-id" }], 8).list, [{ name: "Twins" }]);
   assert.deepEqual(cityList("Austin, Texas\nChicago, Illinois; Austin, Texas").list, ["Austin, Texas", "Chicago, Illinois"]);

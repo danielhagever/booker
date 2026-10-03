@@ -16,27 +16,30 @@ export const clean = (v: unknown, max = MAX_NAME): string => (typeof v === "stri
 // semicolons or new lines. A name with a comma goes in quotes: "Tyler, the Creator". Splitting never
 // happens on "and": "Simon and Garfunkel" stays one name.
 export function splitNames(text: string): string[] {
-  return parseNames(text, true) ?? parseNames(text, false) ?? text.split(/[,;\n]/).map((x) => x.replace(/["“”„«»]/g, ""));
+  return parseNames(singleQuoted(text)) ?? text.split(/[,;\n]/).map((x) => x.replace(/["“”„«»]/g, ""));
 }
 
-// Each opening quote has its own closing ones: "...", “...”, „...“ or „...”, «...», and, when
-// `single`, '...' or ‘...’ that open a name and close it just before a separator (an apostrophe inside
-// stays: Antone’s). A quote left open returns null: a single quote is then read as an apostrophe (‘68),
-// and if a double quote is still open the text is split plainly, so one stray quote can't join the list.
-function parseNames(text: string, single: boolean): string[] | null {
-  const CLOSE: Record<string, string> = { '"': '"', "“": "”", "„": "“”", "«": "»", ...(single ? { "'": "'", "‘": "’" } : {}) };
-  const isSingle = (ch: string) => ch === "'" || ch === "‘" || ch === "’";
-  const chars = [...text];
-  const sepAt = (i: number) => /^\s*([,;\n]|$)/.test(chars.slice(i).join(""));
+// Single quotes quote a name only when they open it, close it just before a separator, and hold a comma
+// and no apostrophe: 'Black Country, New Road' and ‘Tyler, the Creator’ stay whole, while 'Til Tuesday,
+// Keb' Mo' and ‘68 are names with apostrophes.
+function singleQuoted(text: string): string {
+  return text.replace(/(^|[,;\n]\s*)['‘]([^'‘’\n]*,[^'‘’\n]*)['’](?=\s*(?:[,;\n]|$))/g, "$1“$2”");
+}
+
+// Double quotes keep a name whole: "...", “...”, „...“ or „...”, «...». Apostrophes never quote
+// ('Til Tuesday, Keb' Mo', ‘68). A quote left open returns null, and the text is split plainly, so one
+// stray quote can't join the list.
+function parseNames(text: string): string[] | null {
+  const CLOSE: Record<string, string> = { '"': '"', "“": "”", "„": "“”", "«": "»" };
   const out: string[] = [];
   let cur = "";
   let closer = "";
-  chars.forEach((ch, i) => {
-    if (closer && closer.includes(ch) && (!isSingle(ch) || sepAt(i + 1))) closer = "";
-    else if (!closer && CLOSE[ch] && (!isSingle(ch) || cur.trim() === "")) closer = CLOSE[ch];
+  for (const ch of text) {
+    if (closer && closer.includes(ch)) closer = "";
+    else if (!closer && CLOSE[ch]) closer = CLOSE[ch];
     else if (!closer && (ch === "," || ch === ";" || ch === "\n")) (out.push(cur), (cur = ""));
     else cur += ch;
-  });
+  }
   out.push(cur);
   return closer ? null : out;
 }

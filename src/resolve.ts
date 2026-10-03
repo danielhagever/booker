@@ -3,6 +3,7 @@
 // the exact name is used only if it resembles what was typed; the answer says so and offers the others.
 
 import { Qloo, normalizeName, type Entity } from "./qloo.ts";
+import { km } from "./geo.ts";
 
 export interface Choice {
   id: string;
@@ -19,23 +20,30 @@ export interface Resolved {
   alternatives: Choice[];
 }
 
-const STOP = new Set(["the", "a", "an", "of", "and", "&"]);
+// Only a leading article is dropped ("The Empty Bottle" is Empty Bottle), and "&" is "and"; "of" stays,
+// since of Montreal isn't Montreal.
+const ARTICLES = new Set(["the", "a", "an"]);
+const FOLD: Record<string, string> = { "\u00f8": "o", "\u00e6": "ae", "\u0153": "oe", "\u00df": "ss", "\u0142": "l", "\u0111": "d", "\u00fe": "th" };
 // Accents are folded ("Beyonce" is Beyoncé); apostrophes, colons and dots join ("Cat's" is "Cats", "9:30"
 // is "930"); other punctuation separates words.
 const SPELLING: Record<string, string> = { theater: "theatre", amphitheater: "amphitheatre", centre: "center" };
-const words = (s: string) =>
-  normalizeName(s)
+const words = (s: string) => {
+  const ws = normalizeName(s)
     .normalize("NFKD")
     .replace(/\p{M}/gu, "")
+    .replace(/[\u00f8\u00e6\u0153\u00df\u0142\u0111\u00fe]/g, (c) => FOLD[c])
+    .replace(/[&+]/g, " and ") // "Florence + the Machine", "Simon & Garfunkel"
     .replace(/['\u2018\u2019`:.]/g, "")
     .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .split(/\s+/)
-    .filter((w) => w && !STOP.has(w))
+    .filter(Boolean)
     .map((w) => SPELLING[w] ?? w);
+  return ws.length > 1 && ARTICLES.has(ws[0]) ? ws.slice(1) : ws;
+};
 // "The Empty Bottle" and "Empty Bottle" are the same name; so are "Snail Mail" and "snail mail".
 export const nameKey = (s: string) => words(s).join(" ");
-// Without spaces, "S. G. Goodman" is S.G. Goodman; used only when no name is equal with its spaces, since
-// Wild Child and Wildchild are different acts.
+// Without spaces, "S. G. Goodman" is S.G. Goodman: used only for initials (a one-letter word on either
+// side) and only when no name is equal with its spaces, since Wild Child and Wildchild are different acts.
 export const squashed = (s: string) => words(s).join("");
 
 function typoDistance(a: string, b: string): number {
@@ -81,7 +89,7 @@ const STATE_CODES: Record<string, string> = Object.fromEntries(
     pennsylvania: "pa", "rhode island": "ri", "south carolina": "sc", "south dakota": "sd", tennessee: "tn", texas: "tx", utah: "ut",
     vermont: "vt", virginia: "va", washington: "wa", "west virginia": "wv", wisconsin: "wi", wyoming: "wy", ontario: "on",
     quebec: "qc", "british columbia": "bc", alberta: "ab", manitoba: "mb", "nova scotia": "ns",
-  }).map(([k, v]) => [k.split(" ").filter((w) => !STOP.has(w)).join(" "), v]),
+  }).map(([k, v]) => [words(k).join(" "), v]),
 );
 // Newspaper (AP) abbreviations, dots dropped: "Portland, Ore.", "Oakland, Calif."
 const STATE_AP: Record<string, string> = {
@@ -149,52 +157,94 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
   const anyPlace = new Set(found.flatMap((e) => [...locationOf(e).all]));
   const content = (ws: string[]) => ws.filter((w) => !anyPlace.has(w) && !GENERIC.has(w));
   const typedContent = content(typed);
-  const scored = found.map((e, order) => {
+  const place = (rest: string[]) => rest.filter((_, i) => !fillerAt(rest, i));
+
+  // 1. How each candidate's name matches: in full, or without its generic ending; and what was typed after it.
+  const matched = found.map((e, order) => {
     const loc = locationOf(e);
-    const place = (rest: string[]) => rest.filter((_, i) => !fillerAt(rest, i));
-    const isLoc = (rest: string[]) => place(rest).every((w) => loc.all.has(w)) && (place(rest).length === 0 || place(rest).some((w) => w !== "city"));
-    const inCity = (rest: string[]) => loc.city.length > 0 && (loc.city.every((w) => rest.includes(w)) || loc.aliases.some((w) => rest.includes(w)));
+    const noData = !e.city && !e.region;
+    // The city counts only from words outside the room's own name ("Mohawk" alone isn't in Mohawk, NY).
+    const nameWords = new Set(dropEnd(words(e.name), (w) => loc.city.includes(w))); // "Mohawk Austin" names Mohawk
+    const outside = typed.filter((w) => !nameWords.has(w));
+    const inCity = loc.city.length > 0 && (loc.city.every((w) => outside.includes(w)) || loc.aliases.some((w) => outside.includes(w)));
+    // After the name: nothing, its own location, or (a record with no location) any place word.
+    const ownPlace = (rest: string[]) => {
+      const p = place(rest);
+      return p.length === 0 || (p.some((w) => w !== "city") && p.every((w) => loc.all.has(w) || (noData && anyPlace.has(w))));
+    };
+    const otherPlace = (rest: string[]) => place(rest).some((w) => w !== "city") && place(rest).every((w) => anyPlace.has(w));
     const raw = words(e.name);
     const named = [raw, dropEnd(raw, (w) => loc.city.includes(w))];
-    let tier = 5;
-    let elsewhere = false; // the name matches but the typed place is another candidate's ("Troubadour Los Angeles" for West Hollywood)
+    let full = false, bare = false, bareAnywhere = false, elsewhere = false;
     for (const n of named) {
       const rest = afterName(typed, n);
-      if (rest && isLoc(rest)) tier = Math.min(tier, inCity(rest) ? 0 : 2);
-      else if (rest && place(rest).every((w) => anyPlace.has(w)) && place(rest).some((w) => w !== "city")) elsewhere = true;
-      // Without a generic ending: only if what was typed in its place is one of the record's own
-      // ("Antone's" for Antone's Nightclub, "Red Rocks" for Red Rocks Amphitheatre), not another kind of
-      // room ("Lincoln Hall" isn't Lincoln Theatre, "Fillmore Auditorium" isn't The Fillmore).
-      const bare = dropEnd(n, (w) => GENERIC.has(w));
-      const ending = n.slice(bare.length);
-      const bareRest = afterName(typed, bare);
-      const typedEnding = bareRest ? bareRest.slice(0, bareRest.length - dropStart(bareRest, (w) => GENERIC.has(w)).length) : [];
-      const after = bareRest && dropStart(bareRest, (w) => GENERIC.has(w));
-      if (after && (ending.length === 0 || typedEnding.every((w) => ending.includes(w))) && isLoc(after)) tier = Math.min(tier, inCity(after) ? 1 : 3);
+      if (rest && ownPlace(rest)) full = true;
+      else if (rest && otherPlace(rest)) elsewhere = true;
+      // Without a generic ending ("Antone's" for Antone's Nightclub, "Red Rocks" for Red Rocks Amphitheatre).
+      // A different typed ending ("Lincoln Hall" for Lincoln Theatre) never matches; a typed ending for a
+      // record that has none ("Mohawk Bar") only where the place agrees.
+      const b = dropEnd(n, (w) => GENERIC.has(w));
+      const ending = n.slice(b.length);
+      const bareRest = afterName(typed, b);
+      if (!bareRest) continue;
+      const after = dropStart(bareRest, (w) => GENERIC.has(w));
+      const typedEnding = bareRest.slice(0, bareRest.length - after.length);
+      const endingOk = typedEnding.length === 0 || (ending.length > 0 ? typedEnding.every((w) => ending.includes(w)) : inCity);
+      if (!endingOk) continue;
+      if (ownPlace(after)) bare = true;
+      else if (otherPlace(after)) bareAnywhere = true;
     }
-    // The same words in another order: "Fox Theatre, Tucson" is the Fox Tucson Theatre. A typed "city" must
-    // be in the name here (Rock City isn't The Rock).
-    if (tier === 5) {
-      const said = place(typed);
-      if (raw.length && raw.every((w) => said.includes(w)) && said.every((w) => raw.includes(w) || (w !== "city" && loc.all.has(w)))) tier = inCity(said) ? 0 : 2;
-    }
-    // Near misses that sit where the typed place says come first.
-    const located = typed.some((w) => w !== "city" && loc.all.has(w));
+    // The same words in another order: "Fox Theatre, Tucson" is the Fox Tucson Theatre (a typed "city" must
+    // be in the name: Rock City isn't The Rock).
+    const said = place(typed);
+    if (!full && raw.length && raw.every((w) => said.includes(w)) && said.every((w) => raw.includes(w) || (w !== "city" && loc.all.has(w)))) full = true;
     const near = content(raw);
-    const closeness = elsewhere ? 2 : typedContent.length && near.length ? (typedContent.filter((w) => near.includes(w)).length * 2) / (typedContent.length + near.length) : 0;
-    if (tier === 5 && (elsewhere || wordsResemble(typedContent, near, false))) tier = 4;
+    const closeness = typedContent.length && near.length ? (typedContent.filter((w) => near.includes(w)).length * 2) / (typedContent.length + near.length) : 0;
     const music = (e.categories ?? []).some((c) => MUSIC.test(c));
-    return { e, tier, closeness, located, music, order };
+    return { e, order, inCity, full, bare, bareAnywhere, elsewhere, closeness, resembles: wordsResemble(typedContent, near, false), music };
   });
-  // Best tier first; among near misses the one in the typed place, then the closest name; then music
-  // venues; then Qloo's order.
-  const ranked = scored
-    .filter((x) => x.tier < 5)
-    .sort((a, b) => a.tier - b.tier || (a.tier === 4 ? Number(b.located) - Number(a.located) || b.closeness - a.closeness : 0) || Number(b.music) - Number(a.music) || a.order - b.order);
-  if (!ranked.length) return null;
-  const best = ranked[0].tier;
-  const exact = best < 4 ? ranked.filter((x) => x.tier === best).map((x) => x.e) : [];
-  return { pick: ranked[0].e, exact, list: ranked.map((x) => x.e) };
+
+  // 2. Where: the typed city, or its metro area (within 40 km of a candidate in the typed city: The Sinclair
+  // in Cambridge for "Boston", the Turf Club in Saint Paul for "Minneapolis", Red Rocks in Morrison for
+  // "Denver"), from Qloo's coordinates.
+  const centers = matched.filter((m) => m.inCity && m.e.lat !== undefined && m.e.lon !== undefined).map((m) => m.e as { lat: number; lon: number });
+  const inArea = (e: Entity) => e.lat !== undefined && e.lon !== undefined && centers.some((c) => km(c, e as { lat: number; lon: number }) <= 40);
+
+  // 3. Tiers: the full name in the city, then in the area; the name without its ending in the city or area;
+  // the full name, then without the ending, where no other place was typed (or the record has none); the
+  // full name in another place; near misses (the closest name first, then the typed place).
+  const tiered = matched.map((m) => {
+    const area = !m.inCity && inArea(m.e);
+    const tier = m.full && m.inCity ? 0
+      : (m.full || m.elsewhere) && area ? 1
+      : m.bare && m.inCity ? 2
+      : (m.bare || m.bareAnywhere) && area ? 3
+      : m.full ? 4
+      : m.bare ? 5
+      : m.elsewhere ? 6
+      : m.resembles ? 7
+      : 9;
+    const located = typed.some((w) => w !== "city" && locationOf(m.e).all.has(w));
+    return { ...m, tier, located };
+  });
+  // Rooms that match without their ending in the city or its area are peers ("Red Rocks, Denver": the bar in
+  // Denver and the amphitheatre in Morrison), and a music venue comes first among them.
+  const best = Math.min(9, ...tiered.map((t) => t.tier));
+  if (best === 9) return null;
+  // Only when no music venue matches in the city itself does one in the area join as a peer.
+  const musicInCity = tiered.some((t) => t.tier === 2 && t.music);
+  const peers = best === 2 && !musicInCity ? [2, 3] : best === 3 ? [3] : [best];
+  const ranked = tiered
+    .filter((t) => t.tier < 9)
+    .sort((a, b) => {
+      const peer = (t: typeof a) => peers.includes(t.tier) && (t.tier !== 3 || best === 3 || t.music);
+      const pa = peer(a), pb = peer(b);
+      if (pa !== pb) return pa ? -1 : 1;
+      if (pa && pb && a.music !== b.music) return a.music ? -1 : 1;
+      return a.tier - b.tier || (a.tier >= 6 ? b.closeness - a.closeness || Number(b.located) - Number(a.located) : 0) || Number(b.music) - Number(a.music) || a.order - b.order;
+    });
+  const exact = best <= 5 ? ranked.filter((t) => peers.includes(t.tier) && (t.tier !== 3 || best === 3 || t.music)).map((t) => t.e) : [];
+  return { pick: ranked[0].e, exact, list: ranked.map((t) => t.e) };
 }
 
 const label = (e: Entity) => (e.disambiguation && nameKey(e.disambiguation) !== nameKey(e.name) ? `${e.name} (${e.disambiguation})` : e.name);
@@ -203,8 +253,12 @@ const label = (e: Entity) => (e.disambiguation && nameKey(e.disambiguation) !== 
 export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | null> {
   const found = (await q.search(input, "urn:entity:artist", 5)).filter((e) => e.types.includes("urn:entity:artist") || !e.types.length);
   const spaced = found.filter((e) => nameKey(e.name) === nameKey(input));
-  const exact = spaced.length ? spaced : found.filter((e) => squashed(e.name) === squashed(input));
-  const list = found.filter((e) => exact.includes(e) || resembles(input, e.name));
+  const initials = (x: string) => words(x).some((w) => w.length === 1);
+  const same = (e: Entity) => squashed(e.name) === squashed(input);
+  const exact = spaced.length ? spaced : found.filter((e) => (initials(input) || initials(e.name)) && same(e));
+  // Otherwise the same letters spaced differently are the closest match: "ACDC" for AC/DC, "boy genius" for
+  // boygenius, ahead of other near names.
+  const list = [...found.filter(same), ...found.filter((e) => !same(e))].filter((e) => exact.includes(e) || same(e) || resembles(input, e.name));
   if (!list.length) return null;
   const pick = exact[0] ?? list[0];
   return {
@@ -219,7 +273,7 @@ export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | 
 // shows happen (categories measured on Qloo place records); golf, country and health clubs don't.
 const ROOM = /\b(live music|concert hall|music venue|night ?club|jazz club|event venue|performing arts theater|theater|theatre|amphitheater|auditorium|bar|pub|lounge|club)\b/i;
 const NOT_ROOM = /\b(golf|country club|health club|fitness|gym|tennis|yacht|swim|athletic|sports club)\b/i;
-const MUSIC = /\b(live music|concert hall|music venue|jazz club|night ?club)\b/i;
+const MUSIC = /\b(live music|concert hall|music venue|jazz club|night ?club|amphitheat(er|re))\b/i;
 export const isRoom = (e: Entity) => {
   const cats = e.categories ?? [];
   return cats.some((c) => ROOM.test(c)) && (cats.some((c) => MUSIC.test(c)) || !cats.some((c) => NOT_ROOM.test(c)));
