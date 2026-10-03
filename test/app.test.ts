@@ -116,7 +116,7 @@ test("MCP: the answer names pitches that were only a closest match, with alterna
       body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "find_acts_for_venue", arguments: { venue: "The Empty Bottle, Chicago", acts: ["Wednesday"], pitches: ["snail male", "Nobody Real"] } } }),
     });
     const text = JSON.parse((await (await worker.fetch(call, env())).text()).split("\n").find((l) => l.startsWith("data: "))!.slice(6)).result.content[0].text;
-    assert.match(text, /Pitch "snail male" was matched to Snail Mail \(closest Qloo match, not an exact name\); alternatives: Snail Male Band \(Indie\) \[id /);
+    assert.match(text, /Pitch "snail male" was matched to Snail Mail \(closest Qloo match, not exactly what was typed\); alternatives: Snail Male Band \(Indie\) \[id /);
     assert.match(text, /Pitches not found in Qloo: Nobody Real\./);
   } finally {
     m.restore();

@@ -20,9 +20,16 @@ export interface Resolved {
 }
 
 const STOP = new Set(["the", "a", "an", "of", "and", "&"]);
-// Accents are folded too: "Beyonce" is Beyoncé and "Sigur Ros" is Sigur Rós.
+// Accents are folded ("Beyonce" is Beyoncé); apostrophes, colons and dots join ("Cat's" is "Cats", "9:30"
+// is "930"); other punctuation separates words.
 const words = (s: string) =>
-  normalizeName(s).normalize("NFKD").replace(/\p{M}/gu, "").replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w && !STOP.has(w));
+  normalizeName(s)
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .replace(/['\u2018\u2019`:.]/g, "")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .split(/\s+/)
+    .filter((w) => w && !STOP.has(w));
 // "The Empty Bottle" and "Empty Bottle" are the same name; so are "Snail Mail" and "snail mail".
 export const nameKey = (s: string) => words(s).join(" ");
 
@@ -51,49 +58,98 @@ function wordsResemble(a: string[], b: string[], half: boolean): boolean {
   return a.filter(close).length / a.length >= 0.5;
 }
 
-// Venues. A venue is typed with its city, with or without a comma ("Bowery Ballroom New York City"), and
-// Qloo sometimes names a place with its city ("Mohawk Austin") or a kind of room ("Antone's Nightclub").
-// Each candidate is compared with what was typed in tiers: the full name (the candidate's own city
-// dropped from the end of both names, and from the typed text only when there's no comma), then the name
-// without generic words at the end ("theatre", "club", "auditorium"). A room in the typed city comes first.
+// Venues. What is typed is the room's name, then perhaps where it is: "Mohawk, Austin", "Texas Theatre
+// Dallas, TX", "Bowery Ballroom New York City". A candidate matches if its name opens the typed text
+// (spaces and punctuation aside: "Exit In" is Exit/In) and everything after the name is the candidate's
+// own location: its city, state, state code or country. Tiers: the full name in the typed city; the name
+// without a generic ending ("Antone's" for Antone's Nightclub) in the typed city; the full name; the name
+// without a generic ending; then near misses, judged on the words that name a room and ranked by how
+// close they are. Qloo sometimes puts the city in the name ("Mohawk Austin"); that counts as location.
 const GENERIC = new Set(["theatre", "theater", "club", "nightclub", "ballroom", "hall", "bar", "pub", "lounge", "room", "music", "live", "venue", "tavern", "saloon", "cafe", "auditorium", "amphitheatre", "amphitheater", "arena", "center", "centre", "stage"]);
+const STATE_CODES: Record<string, string> = Object.fromEntries(
+  Object.entries({
+    alabama: "al", alaska: "ak", arizona: "az", arkansas: "ar", california: "ca", colorado: "co", connecticut: "ct", delaware: "de",
+    "district of columbia": "dc", florida: "fl", georgia: "ga", hawaii: "hi", idaho: "id", illinois: "il", indiana: "in", iowa: "ia",
+    kansas: "ks", kentucky: "ky", louisiana: "la", maine: "me", maryland: "md", massachusetts: "ma", michigan: "mi", minnesota: "mn",
+    mississippi: "ms", missouri: "mo", montana: "mt", nebraska: "ne", nevada: "nv", "new hampshire": "nh", "new jersey": "nj",
+    "new mexico": "nm", "new york": "ny", "north carolina": "nc", "north dakota": "nd", ohio: "oh", oklahoma: "ok", oregon: "or",
+    pennsylvania: "pa", "rhode island": "ri", "south carolina": "sc", "south dakota": "sd", tennessee: "tn", texas: "tx", utah: "ut",
+    vermont: "vt", virginia: "va", washington: "wa", "west virginia": "wv", wisconsin: "wi", wyoming: "wy", ontario: "on",
+    quebec: "qc", "british columbia": "bc", alberta: "ab", manitoba: "mb", "nova scotia": "ns",
+  }).map(([k, v]) => [k.split(" ").filter((w) => !STOP.has(w)).join(" "), v]),
+);
 const dropEnd = (ws: string[], drop: (w: string) => boolean) => {
   const out = [...ws];
   while (out.length > 1 && drop(out[out.length - 1])) out.pop();
   return out;
 };
-const covers = (have: string[], want: string[]) => want.length > 0 && want.every((w) => have.includes(w));
+const dropStart = (ws: string[], drop: (w: string) => boolean) => {
+  let i = 0;
+  while (i < ws.length && drop(ws[i])) i++;
+  return ws.slice(i);
+};
+
+// Where a candidate is, as words a person might type after its name.
+function locationOf(e: Entity): { all: Set<string>; city: string[] } {
+  const city = words(e.city ?? "");
+  const region = words(e.region ?? "");
+  const all = new Set([...city, ...region, ...words(e.country ?? "")]);
+  const code = STATE_CODES[region.join(" ")];
+  if (code) all.add(code);
+  if (e.countryCode === "US") ["us", "usa"].forEach((w) => all.add(w));
+  if (e.countryCode === "GB") all.add("uk");
+  if (city.join(" ") === "new york") ["nyc", "city"].forEach((w) => all.add(w));
+  if (city.length && city[city.length - 1] !== "city") all.add("city"); // "Mexico City", "New York City"
+  return { all, city };
+}
+
+// The rest of the typed words after the candidate's name, if its name opens them (compared without spaces).
+function afterName(typed: string[], name: string[]): string[] | null {
+  const target = name.join("");
+  if (!target) return null;
+  let acc = "";
+  for (let k = 0; k < typed.length; k++) {
+    acc += typed[k];
+    if (acc === target) return typed.slice(k + 1);
+    if (acc.length >= target.length || !target.startsWith(acc)) return null;
+  }
+  return null;
+}
 
 export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exact: Entity[]; list: Entity[] } | null {
-  const comma = input.indexOf(",");
-  const typedName = words(comma < 0 ? input : input.slice(0, comma));
-  const typedCity = comma < 0 ? [] : words(input.slice(comma + 1));
-  // For a near miss, only the words that name a room count: no city or state word of any candidate
-  // (some records have no city) and no generic word, so "New York City Center" doesn't resemble the
-  // Bowery Ballroom typed with its city.
-  const places = new Set([...found.flatMap((e) => words([e.city, e.region].filter(Boolean).join(" "))), "city"]);
-  const content = (ws: string[]) => ws.filter((w) => !places.has(w) && !GENERIC.has(w));
-  const typedContent = content(typedName);
+  const typed = words(input);
+  // For near misses, only the words that name a room count: no location word of any candidate (some
+  // records have no city) and no generic word, so "New York City Center" doesn't resemble "Bowery
+  // Ballroom New York City".
+  const anyPlace = new Set(found.flatMap((e) => [...locationOf(e).all]));
+  const content = (ws: string[]) => ws.filter((w) => !anyPlace.has(w) && !GENERIC.has(w));
+  const typedContent = content(typed);
   const scored = found.map((e, order) => {
-    const city = words(e.city ?? "");
-    const own = new Set([...city, ...words(e.region ?? ""), "city"]);
-    // Without a comma the city may close the typed text: "Mohawk Austin", "Bowery Ballroom New York City".
-    // Its own city puts the room in the typed city; another result's city ("Troubadour Los Angeles" for a
-    // room in West Hollywood) only counts for the name.
-    const typed = comma < 0 ? dropEnd(typedName, (w) => own.has(w)) : typedName;
-    const typedAny = comma < 0 ? dropEnd(typedName, (w) => own.has(w) || places.has(w)) : typedName;
-    const inCity = covers(typedCity, city) || (comma < 0 && typed.length < typedName.length && covers(typedName.slice(typed.length), city));
-    const name = dropEnd(words(e.name), (w) => city.includes(w));
-    const same = (a: string[], b: string[]) => a.join(" ") === b.join(" ");
-    const bare = (ws: string[]) => dropEnd(ws, (w) => GENERIC.has(w));
-    const full = same(typed, name) || same(typedAny, name);
-    const loose = same(bare(typed), bare(name)) || same(bare(typedAny), bare(name));
-    const tier = full && inCity ? 0 : loose && inCity ? 1 : full ? 2 : loose ? 3 : wordsResemble(typedContent, content(name), false) ? 4 : 5;
+    const loc = locationOf(e);
+    const isLoc = (rest: string[]) => rest.every((w) => loc.all.has(w)) && (rest.length === 0 || rest.some((w) => w !== "city"));
+    const inCity = (rest: string[]) => loc.city.length > 0 && (loc.city.every((w) => rest.includes(w)) || (loc.city.join(" ") === "new york" && rest.includes("nyc")));
+    const raw = words(e.name);
+    const named = [raw, dropEnd(raw, (w) => loc.city.includes(w))];
+    let tier = 5;
+    let elsewhere = false; // the name matches but the typed place is another candidate's ("Troubadour Los Angeles" for West Hollywood)
+    for (const n of named) {
+      const rest = afterName(typed, n);
+      if (rest && isLoc(rest)) tier = Math.min(tier, inCity(rest) ? 0 : 2);
+      else if (rest && rest.every((w) => anyPlace.has(w)) && rest.some((w) => w !== "city")) elsewhere = true;
+      const bareRest = afterName(typed, dropEnd(n, (w) => GENERIC.has(w)));
+      const after = bareRest && dropStart(bareRest, (w) => GENERIC.has(w));
+      if (after && isLoc(after)) tier = Math.min(tier, inCity(after) ? 1 : 3);
+    }
+    const near = content(raw);
+    const closeness = elsewhere ? 2 : typedContent.length && near.length ? (typedContent.filter((w) => near.includes(w)).length * 2) / (typedContent.length + near.length) : 0;
+    if (tier === 5 && (elsewhere || wordsResemble(typedContent, near, false))) tier = 4;
     const music = (e.categories ?? []).some((c) => MUSIC.test(c));
-    return { e, tier, inCity, music, order };
+    return { e, tier, closeness, music, order };
   });
-  // Best tier first, then the typed city, then music venues, then Qloo's order.
-  const ranked = scored.filter((x) => x.tier < 5).sort((a, b) => a.tier - b.tier || Number(b.inCity) - Number(a.inCity) || Number(b.music) - Number(a.music) || a.order - b.order);
+  // Best tier first; among near misses the closest name; then music venues; then Qloo's order.
+  const ranked = scored
+    .filter((x) => x.tier < 5)
+    .sort((a, b) => a.tier - b.tier || (a.tier === 4 ? b.closeness - a.closeness : 0) || Number(b.music) - Number(a.music) || a.order - b.order);
   if (!ranked.length) return null;
   const best = ranked[0].tier;
   const exact = best < 4 ? ranked.filter((x) => x.tier === best).map((x) => x.e) : [];

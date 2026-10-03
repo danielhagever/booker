@@ -27,7 +27,7 @@ const failure = (e: unknown) => {
 };
 
 // Bump whenever the pipeline or the result format changes, so no one gets yesterday's logic.
-const CACHE_VERSION = 10;
+const CACHE_VERSION = 11;
 
 async function sha(s: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -117,7 +117,7 @@ function caveats(r: { acts?: VenueResult["acts"]; venue?: VenueResult["venue"]; 
   const picks = [r.venue, ...(r.acts ?? []), r.artist].filter((x): x is NonNullable<typeof x> => !!x).map((p) => ({ p, what: "" }));
   const parts = [...picks, ...found.map((p) => ({ p, what: "Pitch " }))]
     .filter(({ p }) => p.match === "closest" || p.match === "ambiguous")
-    .map(({ p, what }) => `${what}"${p.input}" was matched to ${p.name} (${p.match === "closest" ? "closest Qloo match, not an exact name" : "several Qloo entries share this name; the first was used"})${p.alternatives.length ? `; alternatives: ${p.alternatives.map((a) => `${a.name}${a.note ? ` (${a.note})` : ""} [id ${a.id}]`).join(", ")}` : ""}.`);
+    .map(({ p, what }) => `${what}"${p.input}" was matched to ${p.name} (${p.match === "closest" ? "closest Qloo match, not exactly what was typed" : "several Qloo entries share this name; the first was used"})${p.alternatives.length ? `; alternatives: ${p.alternatives.map((a) => `${a.name}${a.note ? ` (${a.note})` : ""} [id ${a.id}]`).join(", ")}` : ""}.`);
   if (r.unresolved?.length) parts.push(`Not found in Qloo: ${r.unresolved.join(", ")}.`);
   const lost = (r.inbox ?? []).filter((p) => !p.id).map((p) => p.input);
   if (lost.length) parts.push(`Pitches not found in Qloo: ${lost.join(", ")}.`);

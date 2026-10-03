@@ -237,6 +237,7 @@ test("helpers: resemblance, names without 'the', music rooms, city spelling, lis
   assert.deepEqual(names('"Tyler, the Creator", \u201cBlack Country, New Road\u201d; Wet Leg\nBlack Pumas, Shakey Graves', 8).list.map((n) => n.name), ["Tyler, the Creator", "Black Country, New Road", "Wet Leg", "Black Pumas", "Shakey Graves"]);
   assert.deepEqual(names("\u201eTyler, the Creator\u201c, \u00abBlack Country, New Road\u00bb, Wet Leg", 8).list.map((n) => n.name), ["Tyler, the Creator", "Black Country, New Road", "Wet Leg"]);
   assert.deepEqual(names('"Tyler, the Creator, Wednesday', 8).list.map((n) => n.name), ["Tyler", "the Creator", "Wednesday"], "an unclosed quote doesn't swallow the list");
+  assert.deepEqual(names("'Tyler, the Creator', \u201eBlack Country, New Road\u201d, 'Guns N' Roses', Antone's", 8).list.map((n) => n.name), ["Tyler, the Creator", "Black Country, New Road", "Guns N' Roses", "Antone's"]);
   assert.deepEqual(names([{ name: "Twins", id: "not-an-id" }], 8).list, [{ name: "Twins" }]);
   assert.deepEqual(cityList("Austin, Texas\nChicago, Illinois; Austin, Texas").list, ["Austin, Texas", "Chicago, Illinois"]);
 });
@@ -334,7 +335,7 @@ test("venues: the words that name the room decide, not the city, a kind of room,
   const mohawk = [place("Mohawk", "Mohawk", "New York", ["Bar"]), place("Mohawk Austin", "Austin", "Texas", ["Bar", "Live music venue"])];
   assert.equal(pick("Mohawk Austin", mohawk), "Mohawk Austin");
   assert.equal(pick("Mohawk, Austin", mohawk), "Mohawk Austin");
-  assert.equal(pick("Troubadour Los Angeles", [place("Los Angeles Theatre", "Los Angeles", "California", ["Performing arts theater"]), place("The Troubadour", "West Hollywood", "California")]), "The Troubadour");
+  assert.equal(pick("Troubadour Los Angeles", [place("Los Angeles Theatre", "Los Angeles", "California", ["Performing arts theater"]), place("The Troubadour", "West Hollywood", "California")]), "The Troubadour (closest)", "Qloo files it in West Hollywood");
   assert.equal(pick("Fillmore San Francisco", [place("San Francisco Symphony", "San Francisco", "California", ["Concert hall"]), place("The Fillmore", "San Francisco", "California")]), "The Fillmore");
   assert.equal(pick("Antone's, Austin", [place("Antone's Nightclub", "Austin", "Texas")]), "Antone's Nightclub");
   assert.equal(pick("Empty Botle, Chicago", [place("The Empty Bottle", "Chicago", "Illinois")]), "The Empty Bottle (closest)");
@@ -352,4 +353,27 @@ test("venues: the words that name the room decide, not the city, a kind of room,
   assert.equal(pick("Hotel Vegas, Austin", [place("Hard Rock Hotel", "Las Vegas", "Nevada", ["Hotel", "Live music venue"]), place("Hotel Vegas", "Austin", "Texas", ["Bar"])]), "Hotel Vegas");
   assert.equal(pick("Red Rocks", [place("Red Rocks Amphitheatre", "Morrison", "Colorado", ["Amphitheater"])]), "Red Rocks Amphitheatre");
   assert.equal(pick("Kansas City Music Hall", [place("Kansas City Live!", "Kansas City", "Missouri"), place("Kansas City Music Hall", "Kansas City", "Missouri", ["Concert hall"])]), "Kansas City Music Hall");
+  // Eighth pass: "Venue City, ST", records with no city, "city" at the end of a name, punctuation in names.
+  const tx = [place("Granada Theater", "Dallas", "Texas"), place("Texas Theatre", "Dallas", "Texas", ["Movie theater", "Performing arts theater"])];
+  for (const t of ["Texas Theatre Dallas, TX", "Texas Theatre Dallas TX", "Texas Theatre (Dallas, TX)"]) assert.equal(pick(t, tx), "Texas Theatre", t);
+  const chi = [place("Chicago Theatre", "Chicago", "Illinois", ["Performing arts theater"]), place("Thalia Hall", "Chicago", "Illinois")];
+  for (const t of ["Chicago Theatre Chicago IL", "Chicago Theatre Chicago, IL", "Chicago Theatre"]) assert.equal(pick(t, chi), "Chicago Theatre", t);
+  assert.equal(pick("House of Blues Chicago, IL", [place("House of Blues Houston", "Houston", "Texas"), place("House of Blues Chicago", "Chicago", "Illinois")]), "House of Blues Chicago");
+  assert.equal(pick("House of Blues, Houston", [place("House of Blues Dallas", "Dallas", "Texas"), place("House of Blues Chicago", "Chicago", "Illinois")]), "House of Blues Dallas (closest)", "the typed city isn't in the results");
+  const bowls = [place("Brooklyn Bowl", "Brooklyn", "New York"), place("Brooklyn Bowl Las Vegas", "Las Vegas", "Nevada")];
+  assert.equal(pick("Brooklyn Bowl Las Vegas, NV", bowls), "Brooklyn Bowl Las Vegas");
+  assert.equal(pick("Brooklyn Bowl, Brooklyn", bowls), "Brooklyn Bowl");
+  assert.equal(pick("Mohawk Austin, TX", mohawk), "Mohawk Austin");
+  assert.equal(pick("House of Blues, Chicago", [place("House of Blues Chicago"), place("House of Blues Houston", "Houston", "Texas")]), "House of Blues Chicago", "a record with no city");
+  assert.equal(pick("Brooklyn Bowl, Las Vegas", [place("Brooklyn Bowl", "Brooklyn", "New York"), place("Brooklyn Bowl Las Vegas")]), "Brooklyn Bowl Las Vegas");
+  const rock = [place("The Rock", "San Antonio", "Texas", ["Bar"]), { ...place("Rock City", "Nottingham", "England"), country: "United Kingdom", countryCode: "GB" }];
+  assert.equal(pick("Rock City", rock), "Rock City");
+  assert.equal(pick("Rock City Nottingham", rock), "Rock City");
+  assert.equal(pick("930 Club, Washington DC", [place("9:30 Club", "Washington", "District of Columbia")]), "9:30 Club");
+  assert.equal(pick("Cats Cradle, Carrboro", [place("Cat's Cradle Back Room", "Carrboro", "North Carolina"), place("Cat's Cradle", "Carrboro", "North Carolina")]), "Cat's Cradle");
+  assert.equal(pick("Johnny Brendas", [place("Johnny Brenda's", "Philadelphia", "Pennsylvania")]), "Johnny Brenda's");
+  assert.equal(pick("Exit In, Nashville", [place("Exit/In", "Nashville", "Tennessee")]), "Exit/In");
+  assert.equal(pick("Bowery Ballroom, NYC", bowery), "The Bowery Ballroom");
+  assert.equal(pick("Fillmore, San Francisco, California", [place("The Fillmore", "Detroit", "Michigan"), place("The Fillmore", "San Francisco", "California")]), "The Fillmore");
+  assert.equal(chooseVenue("Fillmore, San Francisco, California", [place("The Fillmore", "Detroit", "Michigan"), place("The Fillmore", "San Francisco", "California")])!.pick.city, "San Francisco");
 });
