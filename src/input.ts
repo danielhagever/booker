@@ -57,10 +57,11 @@ export function names(v: unknown, max: number): { list: Named[]; leftOut: string
   return { list: all.slice(0, max), leftOut: all.slice(max).map((n) => n.name) };
 }
 
-// Cities: one per line or separated by semicolons ("Austin, Texas" keeps its comma). A line of several
-// cities with commas ("Chicago, Austin, Asheville") is split too: a state, province or country (name, code
-// or newspaper abbreviation) stays with the city before it ("Austin, Texas, Chicago, Illinois" is two
-// cities; "Austin, TX, USA" is one).
+// Cities: one per line or separated by semicolons. A line with one comma is one city ("Austin, Texas",
+// "Melbourne, Victoria"), and so is "City, State, Country". A line of city names with commas and no state
+// or country among them ("Chicago, Austin, Asheville") is split. Anything else ("Boston, New York,
+// Philadelphia, Washington": New York and Washington are states too) isn't guessed at: it is reported as
+// not used, with a note to put one city per line.
 const STATES: [string, string, string?][] = [
   ["alabama", "al", "ala"], ["alaska", "ak"], ["arizona", "az", "ariz"], ["arkansas", "ar", "ark"], ["california", "ca", "calif"],
   ["colorado", "co", "colo"], ["connecticut", "ct", "conn"], ["delaware", "de", "del"], ["district of columbia", "dc"], ["florida", "fl", "fla"],
@@ -83,19 +84,19 @@ const COUNTRIES = (
 ).split(",");
 const REGIONS = new Set([...STATES.flat().filter((x): x is string => !!x), ...COUNTRIES]);
 const isRegion = (p: string) => REGIONS.has(p.trim().toLowerCase().replace(/\./g, "").replace(/\s+/g, " "));
+const UNCLEAR = " (one city per line, please)";
 function splitCities(line: string): string[] {
   const parts = line.split(",");
-  if (parts.length < 2) return [line];
-  const out: string[] = [];
-  for (const p of parts) {
-    if (out.length && isRegion(p)) out[out.length - 1] += `,${p}`;
-    else out.push(p);
-  }
-  return out;
+  if (parts.length <= 2) return [line];
+  if (parts.length === 3 && isRegion(parts[1]) && isRegion(parts[2])) return [line];
+  if (!parts.slice(1).some(isRegion)) return parts;
+  return [line + UNCLEAR];
 }
 
 export function cityList(v: unknown): { list: string[]; leftOut: string[] } {
   const raw: unknown[] = typeof v === "string" ? v.split(/[;\n|]+/).flatMap(splitCities) : Array.isArray(v) ? v : [];
-  const all = [...new Set(raw.map((c) => clean(c)).filter((c) => c.length >= 2))];
-  return { list: all.slice(0, MAX_CITIES), leftOut: all.slice(MAX_CITIES) };
+  const all = [...new Set(raw.map((c) => clean(c, 160)).filter((c) => c.length >= 2))];
+  const unclear = all.filter((c) => c.endsWith(UNCLEAR));
+  const usable = all.filter((c) => !c.endsWith(UNCLEAR)).map((c) => c.slice(0, MAX_NAME));
+  return { list: usable.slice(0, MAX_CITIES), leftOut: [...unclear, ...usable.slice(MAX_CITIES).map((c) => `${c} (more than ${MAX_CITIES})`)] };
 }

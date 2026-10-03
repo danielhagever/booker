@@ -195,6 +195,7 @@ export async function forVenue(
   let city = cityOf(v);
   let qlooCity: string | undefined;
   let cityAnswered = false; // the city has already shaped a ranking
+  let openersWithoutCity = false;
   const ask = async (o: Parameters<Qloo["artists"]>[0]) => {
     try {
       const r = await q.artists({ ...o, city });
@@ -207,6 +208,7 @@ export async function forVenue(
         const plain = (await q.artists({ ...o, city: undefined })).list;
         if (plain.length) {
           if (cityAnswered) {
+            if (o.popMin === undefined) openersWithoutCity = true;
             trace.push({ step: "City", detail: `Qloo had no ${o.popMin === undefined ? "openers" : "acts"} for this with "${city}" as a signal, so those are ranked without the city` });
           } else {
             trace.push({ step: "City", detail: `Qloo had no answers with "${city}" as a signal, so the city isn't part of the ranking` });
@@ -235,7 +237,7 @@ export async function forVenue(
   const openers = openersMax === undefined ? [] : (await ask({ entities: actIds, popMax: openersMax, exclude: actIds, rising: input.rising, take: 8 })).map(candidate).filter((o) => !fits.some((f) => f.id === o.id));
   trace.push({
     step: "Shortlist",
-    detail: `Qloo ranked ${fits.length} acts that fit and ${openers.length} openers for fans of your acts${city ? ` in ${qlooCity ?? city}` : ""}${input.rising ? ", favoring rising acts (Qloo trends)" : ""}`,
+    detail: `Qloo ranked ${fits.length} acts that fit${city && openersWithoutCity ? ` in ${qlooCity ?? city}` : ""} and ${openers.length} openers for fans of your acts${city && !openersWithoutCity ? ` in ${qlooCity ?? city}` : ""}${input.rising ? ", favoring rising acts (Qloo trends)" : ""}`,
   });
 
   // 4. Why: for each candidate, the act of yours whose fans like it most (one call per act, up to 4).

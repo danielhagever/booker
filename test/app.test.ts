@@ -215,3 +215,9 @@ test("MCP: the artist answer names the cities it left out", async () => {
 test("the page offers Not it? whenever Qloo had other candidates, so a wrong exact match can be put right", () => {
   assert.match(page, /const choose = p\.match !== "chosen" && p\.alternatives\.length/);
 });
+
+test("/api/artist: a line of cities that can't be split safely is named in the error, not dropped", async () => {
+  const r = await worker.fetch(post("/api/artist", { artist: "Wednesday", cities: "Boston, New York, Philadelphia, Washington" }), env());
+  assert.equal(r.status, 400);
+  assert.match(((await r.json()) as any).error, /Put one city per line.*Boston, New York, Philadelphia, Washington/);
+});

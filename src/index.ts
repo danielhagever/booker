@@ -27,7 +27,7 @@ const failure = (e: unknown) => {
 };
 
 // Bump whenever the pipeline or the result format changes, so no one gets yesterday's logic.
-const CACHE_VERSION = 17;
+const CACHE_VERSION = 18;
 
 async function sha(s: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -231,7 +231,8 @@ export default {
     }
     if (url.pathname === "/api/artist" && req.method === "POST") {
       const input = artistInput(await req.json().catch(() => null));
-      if (input.artist.name.length < 1 || !input.cities.length) return json({ error: "Name the artist and at least one city." }, 400);
+      if (input.artist.name.length < 1 || !input.cities.length)
+        return json({ error: input.leftOut.length ? `Put one city per line, each with its state or country: ${input.leftOut.join("; ")}` : "Name the artist and at least one city." }, 400);
       const budget = new Budget(REQUEST_BUDGET);
       try {
         const r = await cached(env, budget, "artist", { a: input.artist, c: input.cities }, () => forArtist(env, budget, input), () => allow(req, "artist", LIMITS.artist, budget));
