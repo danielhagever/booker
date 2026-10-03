@@ -71,13 +71,16 @@ export class Qloo {
     this.gap = env.QLOO_MIN_GAP_MS !== undefined && Number.isFinite(g) && g >= 0 ? g : MIN_GAP_MS;
   }
 
-  // Calls take turns: each starts at least `gap` after the previous one actually started. The gap is
-  // measured after the wait, so a timer that fires late can't squeeze the next call closer.
+  // Calls take turns: each goes out at least `gap` after the previous one was sent (`last` is set at the
+  // send, in get()). The clock is checked again after each wait, because a timer can fire a few ms early
+  // or late (Node times it from a cached loop clock); three checks at most.
   private turn(): Promise<void> {
     const mine = this.queue.then(async () => {
-      const wait = this.last + this.gap - Date.now();
-      if (wait > 0) await new Promise((r) => setTimeout(r, wait + 1));
-      this.last = Date.now();
+      for (let i = 0; i < 3; i++) {
+        const wait = this.last + this.gap - Date.now();
+        if (wait <= 0) break;
+        await new Promise((r) => setTimeout(r, wait));
+      }
     });
     this.queue = mine;
     return mine;
@@ -92,11 +95,13 @@ export class Qloo {
     const t = Date.now(); // the time Qloo took, not the wait for a turn
     let res: Response;
     try {
-      res = await fetchWithTimeout(
+      const sent = fetchWithTimeout(
         `${base}${path}?${new URLSearchParams(params)}`,
         { headers: { "X-Api-Key": this.env.QLOO_API_KEY, accept: "application/json" } },
         TIMEOUT_MS,
       );
+      this.last = Date.now(); // before the next call's turn runs: it was queued after this one
+      res = await sent;
     } catch (e) {
       this.calls.push({ path, params, status: 0, ms: Date.now() - t, count: 0 });
       if ((e as Error)?.name === "TimeoutError") throw new QlooError("Qloo took too long to answer. Please try again.", 504);
