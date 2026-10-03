@@ -79,13 +79,13 @@ When a name was only a closest match, the tool's answer says so and lists the al
 **Input:** Mohawk, Austin. Acts that did well: Black Pumas, Shakey Graves, The Black Angels, Parquet Courts. Pitches: Wet Leg, Khruangbin, Morgan Wallen.
 
 1. **Venue:** Mohawk Austin, 912 Red River St (Qloo place; Bar, Event venue, Live music venue). All four acts exact.
-2. **Size:** the acts sit between 0.973 and 0.993 on Qloo's popularity scale.
-3. **Acts that fit** (fans of your acts, in Austin, at your size): Allah-Las, King Gizzard & The Lizard Wizard, Kevin Morby, Khruangbin, The Growlers, White Denim, Courtney Barnett, Temples. **Openers:** Benjamin Booker, The Arcs, Ron Gallo, Golden Dawn Arkestra, The Nude Party.
-4. **Bills:** Allah-Las with Kikagaku Moyo; King Gizzard & The Lizard Wizard with The Nude Party; Kevin Morby with Benjamin Booker.
+2. **Size:** the acts sit between 0.973 and 0.993 on Qloo's popularity scale; acts that fit are looked for in 0.9655 to 0.9949, openers below.
+3. **Acts that fit** (fans of your acts, in Austin, at your size; the first 8 of 12): Allah-Las, The Arcs, King Gizzard & The Lizard Wizard, Kevin Morby, Khruangbin, The Growlers, White Denim, Courtney Barnett. **Openers** (the first 5 of 8): Benjamin Booker, Ron Gallo, Golden Dawn Arkestra, The Nude Party, Brittany Howard.
+4. **Bills:** Allah-Las with Kikagaku Moyo; The Arcs with Ron Gallo; King Gizzard & The Lizard Wizard with The Nude Party.
 5. **Inbox:** Khruangbin fits your room; Wet Leg fits your room; Morgan Wallen is off your crowd's taste (0.83, below 0.84).
 6. **Competition:** Qloo's top room in Austin for Allah-Las's fans is Mohawk Austin itself, then Swan Dive and Hotel Vegas.
 
-20 Qloo calls, 8.9 seconds; the page lists each one.
+20 Qloo calls, all answered 200; the page lists each one.
 
 ## Known limitations
 
