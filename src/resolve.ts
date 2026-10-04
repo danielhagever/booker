@@ -308,15 +308,21 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
       // Hueston", "Billy Bob's Texs"), as goesOn's closeness ("LA" isn't cut-off Las Vegas); one letter off before
       // two ("Huston" is Houston, not Boston).
       const said = place(rest).filter((w) => w !== "city");
-      // How far a typed word is from the room's place, by its full city and state names only (not "Mass" or
-      // "NOLA": "East" and "DTLA" aren't places): 1 a cut-off city (three letters or more) or one letter off, 2 two
-      // letters off in a word of six letters or more, else too far ("Penn Quarter" isn't Pennsylvania, "Park"
-      // isn't York).
-      const cityWords = loc.city.filter((p) => p.length >= 4);
-      const fullNames = [...cityWords, ...words(e.region ?? "").filter((p) => p.length >= 4)];
-      const off = (w: string) =>
-        w.length < 3 ? 9 : Math.min(9, ...cityWords.filter((p) => p.startsWith(w)).map(() => 1), ...fullNames.map((p) => typoDistance(w, p)).map((d) => (d <= (w.length >= 6 ? 2 : 1) ? d : 9)));
-      const nearest = Math.min(9, ...said.map(off));
+      // How far a typed word is from one of the room's place words of four letters or more (its city, state, the
+      // big city next door, a nickname): 1 when it's the last word typed and opens one ("Phila", "Bos", "Wisc",
+      // "Cali"; "Penn Quarter" isn't Pennsylvania) or is one letter off where either word has five letters or
+      // more ("Renno", "Phily"; "NoDa" isn't NOLA), 2 when two letters off in a word of six letters or more
+      // ("Hueston"; "East", "Soho", "Park" aren't Mass, Ohio, York), else too far.
+      const targets = [...loc.all].filter((p) => p !== "city" && p.length >= 4);
+      const off = (w: string, i: number) =>
+        w.length < 3
+          ? 9
+          : Math.min(9, ...targets.map((p) => {
+              if (i === said.length - 1 && p.startsWith(w)) return 1;
+              const d = typoDistance(w, p);
+              return d <= 1 && Math.max(w.length, p.length) >= 5 ? d : d === 2 && w.length >= 6 ? 2 : 9;
+            }));
+      const nearest = Math.min(9, ...said.map((w, i) => off(w, i)));
       opens = Math.max(opens, said.some((w) => loc.all.has(w)) ? 3 : nearest <= 2 ? 3 - nearest / 2 : 1);
     }
     return { e, order, inCity, full, bare, bareAnywhere, elsewhere, longerOwn, longerOther, opens, closeness, resembles: wordsResemble(typedContent, near, false), music };
