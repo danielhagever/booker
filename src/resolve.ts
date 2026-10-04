@@ -201,6 +201,11 @@ function locationOf(e: Entity): { all: Set<string>; city: string[]; aliases: str
 }
 // Words after a name that say nothing either way: a zip code, and "in" or "at" before the place ("House of
 // Blues in Chicago"; a final "IN" is Indiana). Other numbers can be part of a name (Stage 48, Terminal 5).
+// Shortened words in place names ("N Hollywood", "So Burlington", "Mt Vernon", "Ft Worth", "St Louis").
+const PLACE_ABBR: Record<string, string[]> = {
+  n: ["north", "northern"], no: ["north"], s: ["south", "southern"], so: ["south"], e: ["east", "eastern"], w: ["west", "western"],
+  mt: ["mount"], ft: ["fort"], st: ["saint"], ste: ["sainte"],
+};
 const fillerAt = (rest: string[], i: number) => /^\d{5}(\d{4})?$/.test(rest[i]) || ((rest[i] === "in" || rest[i] === "at" || rest[i] === "the") && i < rest.length - 1);
 
 // The rest of the typed words after the candidate's name, if its name opens them (compared without spaces).
@@ -315,8 +320,9 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
       // two ("Huston" is Houston, not Boston).
       const placed = place(rest);
       const said = placed.filter((w) => w !== "city");
-      // A place typed in full, all its words: the room's own ("Mexico City", "Northern Ireland") or its country.
-      const typedIn = (ph: string[]) => ph.every((w) => placed.includes(w));
+      // A place typed in full, all its words: the room's own ("Mexico City", "Northern Ireland") or its country;
+      // a direction or title may be shortened ("N Ireland", "W Virginia", "Mt Vernon", "St Paul").
+      const typedIn = (ph: string[]) => ph.every((w) => placed.some((t) => t === w || PLACE_ABBR[t]?.includes(w)));
       // How far a typed word is from the room's place. Its own city (words of four letters or more): 1 when cut off
       // ("Phila", "ATL", "Det", also before a neighborhood) or one letter off in a word of four letters or more
       // ("Pual", "Rneo"; "End" isn't Bend). Its other place words of four letters or more: its state, the big city
@@ -347,7 +353,9 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
       const countryNear = (w: string, i: number) =>
         i === said.length - 1 && w.length >= 3 && countryWords.some((p) => p.startsWith(w) || (typoDistance(w, p) <= 1 && Math.max(w.length, p.length) >= 5));
       const nearest = Math.min(9, ...said.map((w, i) => off(w, i)));
-      const tierHere = loc.places.some(typedIn) ? 6.3 : nearest === 1 ? 6.4 : nearest === 2 ? 6.5
+      // The more of what was typed a place covers, the better: "N Hollywood" is North Hollywood before Hollywood.
+      const full = loc.places.filter(typedIn);
+      const tierHere = full.length ? 6.3 - Math.max(...full.map((ph) => ph.length)) / 1000 : nearest === 1 ? 6.4 : nearest === 2 ? 6.5
         : loc.countries.some(typedIn) ? 6.53 : nearest === 3 ? 6.55 : said.some(countryNear) ? 6.56 : 6.6;
       opens = opens ? Math.min(opens, tierHere) : tierHere;
     }
