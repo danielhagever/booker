@@ -278,10 +278,20 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
     for (const n of named) {
       const rest = afterName(typed, n);
       if (!rest || !place(rest).length || !place(rest).every((w) => !anyPlace.has(w) || loc.all.has(w))) continue;
-      // A short or small word counts only as itself ("Music Hall of Wiliamsburg"; "on Chestnut" isn't "of").
-      const first = rest[0];
-      const close = (next: string) => next === first || (first.length >= 3 && !SMALL.has(first) && (next.startsWith(first) || typoDistance(first, next) <= 1));
-      const goesOn = found.some((o) => { const w = words(o.name); return o !== e && w.length > n.length && n.every((x, i) => w[i] === x) && close(w[n.length]); });
+      // Short or small words are passed over on both sides and the first real word after them must be close:
+      // "Music Hall of Wiliamsburg" and "Music Hall in Williamsburg" are Music Hall of Williamsburg, but "The
+      // Music Hall on Chestnut" isn't, nor is "Hard Rock Live at Universal" Hard Rock Live at Etess Arena.
+      const minor = (w: string) => w.length < 3 || SMALL.has(w);
+      const skip = (ws: string[], from: number) => { let k = from; while (k < ws.length && minor(ws[k])) k++; return k; };
+      const k = skip(rest, 0);
+      const goesOn = k < rest.length && found.some((o) => {
+        const w = words(o.name);
+        if (o === e || w.length <= n.length || !n.every((x, i) => w[i] === x)) return false;
+        const j = skip(w, n.length);
+        if (j >= w.length) return false;
+        const t = rest[k], next = w[j];
+        return next === t || next.startsWith(t) || typoDistance(t, next) <= 1;
+      });
       if (goesOn) continue;
       opens = Math.max(opens, place(rest).some((w) => w !== "city" && loc.all.has(w)) ? 2 : 1);
     }
