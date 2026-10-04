@@ -1,7 +1,7 @@
 // Booker's pipelines against a mock Qloo shaped like the live API. Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { forArtist, forVenue, sizeOf, fromSize, cityOf } from "../src/booker.ts";
+import { forArtist, forVenue, sizeOf, fromSize, cityOf, showRoomsFirst } from "../src/booker.ts";
 import { resembles, nameKey, squashed, isRoom, chooseVenue, resolveArtist, resolveVenue } from "../src/resolve.ts";
 import { names, cityList } from "../src/input.ts";
 import { Budget } from "../src/limits.ts";
@@ -528,4 +528,16 @@ test("city lookup: towns over islands, province and state codes worldwide, and e
   } finally {
     m.restore();
   }
+});
+
+test("rooms filed as music venues or bars come before museums and galleries Qloo also ranks (seen live)", () => {
+  const r = (name: string, ...categories: string[]) => ({ name, categories });
+  const london = [
+    r("Handel Hendrix House", "Historical landmark", "Gift shop", "Museum", "Live music venue"),
+    r("LSO St Luke's", "Rehearsal studio", "Recording studio", "Event venue", "Live music venue"),
+    r("Institute of Contemporary Arts", "Tourist attraction", "Book store", "Art gallery"),
+    r("IKLECTIK", "Art center", "Live music venue"),
+    r("The Lexington", "Pub", "Live music venue"),
+  ];
+  assert.deepEqual(showRoomsFirst(london, 3).map((x) => x.name), ["LSO St Luke's", "The Lexington", "Handel Hendrix House"]);
 });

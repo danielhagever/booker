@@ -42,7 +42,8 @@ Streaming dashboards say how big an act is. Qloo says whose fans overlap with wh
 | Find the venue | `GET /search?query=<venue city>&types=urn:entity:place&take=8` | The room as a Qloo place, with its categories, address and city |
 | Find the acts | `GET /search?query=<name>&types=urn:entity:artist&take=5`; a picked ID: `GET /entities?entity_ids=<id>` | Qloo artist IDs and their popularity |
 | Acts that fit | `GET /v2/insights?filter.type=urn:entity:artist&signal.interests.entities=<your acts>&signal.location.query=<city>&filter.popularity.min/max=<your size>&filter.exclude.entities=<your acts>[&bias.trends=high]&take=12` | Artists your acts' fans love, in your city, at your size |
-| Why, bills, inbox | the same with `filter.results.entities=<a given list>` and one act as the signal | Score a given list: closest act, fan overlap of a bill, each pitch |
+| Why, bills | the same with `filter.results.entities=<a given list>` and one act as the signal | Score a given list: the closest act, the fan overlap of a bill |
+| Inbox | the same with `filter.results.entities=<the pitches and three of Qloo's picks>` and all your acts as the signal, no city | Each pitch next to a yardstick |
 | Your room's visitors | `signal.interests.entities=<the venue>` | What people who like the venue itself like |
 | Rooms that fit an act | `GET /v2/insights?filter.type=urn:entity:place&filter.tags=urn:tag:category:place:live_music_venue,urn:tag:category:place:concert_hall&operator.filter.tags=union&filter.location.query=<city>&signal.interests.entities=<act>` | Venues whose visitors' taste fits the act |
 | A city's taste for an act | `GET /v2/insights?filter.type=urn:entity:artist&signal.location.query=<city>&filter.results.entities=<act>` | Rank the cities on a route |
@@ -54,7 +55,7 @@ A venue search makes about 20 Qloo calls in about 9 seconds; an artist search wi
 - Artists accept `signal.location.query` although the parameter guide doesn't list it: it works for cities ("Chicago", "Austin": local acts rise) and comes back empty for neighborhoods ("East Austin", "Williamsburg"). An unknown city is a 400 ("unable to resolve to a valid locality"); Booker then asks again without it and says so.
 - With a city as the signal, a scored list (`filter.results.entities`) leaves some off-taste artists out entirely, so the inbox is scored by taste alone, next to three of Qloo's own picks as a yardstick.
 - Qloo's popularity for artists bunches near 1 (see above), hence the log scale.
-- Venue-based place search with the live-music-venue tag returns the right rooms per city: indie rock's Wednesday gets Schubas, The Empty Bottle and Beat Kitchen in Chicago, Hotel Vegas and Mohawk in Austin; country's Charley Crockett gets the Saxon Pub and Antone's.
+- Venue-based place search with the live-music-venue tag returns the right rooms per city for indie and roots acts: Wednesday gets Schubas, The Empty Bottle and Beat Kitchen in Chicago, Hotel Vegas and Mohawk in Austin; Charley Crockett gets the Saxon Pub and Antone's. For bigger acts it also ranks museums, galleries and classical halls (Phoebe Bridgers in London: Handel Hendrix House, Dulwich Picture Gallery), so Booker asks for twelve and puts the rooms filed as music venues or bars first.
 - A city's affinity for an act tracks its home crowd: Wednesday scores 0.996 in Asheville, its hometown, ahead of Chicago (0.964).
 - Demographics (`urn:demographics`) came back for only some artists and looked noisy for small acts, so Booker doesn't use them.
 
