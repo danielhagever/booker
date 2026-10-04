@@ -1,4 +1,4 @@
-// 418 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
+// 424 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
 // the answer a reasonable person expects. Built by an independent review that ran them through ten versions
 // of the matcher; every one of these was right in at least one version, and all are right now.
 export default async function ({ place, art, runVenue, runArtist, runSplit, is, starts, eqList }) {
@@ -477,6 +477,13 @@ export default async function ({ place, art, runVenue, runArtist, runSplit, is, 
   await runVenue("Brooklyn Bowl Phily", [P("Brooklyn Bowl", "Brooklyn", "New York"), P("Brooklyn Bowl Philadelphia", "Philadelphia", "Pennsylvania")], notExactWrong("Brooklyn Bowl Philadelphia", "Philadelphia"));
   await runVenue("Orpheum Theater, Wisc", [P("Orpheum Theatre", "Los Angeles", "California"), P("Orpheum Theatre", "Minneapolis", "Minnesota"), P("Orpheum Theater", "Madison", "Wisconsin")], notExactWrong("Orpheum Theater", "Madison"));
   await runVenue("House of Blues Cali", [P("House of Blues Chicago", "Chicago", "Illinois"), P("House of Blues Anaheim", "Anaheim", "California")], notExactWrong("House of Blues Anaheim", "Anaheim"));
+  // Pass 51: "State St" isn't "States"; the room's own city counts cut off anywhere and one letter off.
+  await runVenue("Orpheum Theater, State St, Madsion", [P("Orpheum Theatre", "Los Angeles", "California"), P("Orpheum Theatre", "Minneapolis", "Minnesota"), P("Orpheum Theater", "Madison", "Wisconsin")], notExactWrong("Orpheum Theater", "Madison"));
+  await runVenue("Warner Theatre, State St, Eerie", [P("Warner Theatre", "Washington", "District of Columbia"), P("Warner Theatre", "Erie", "Pennsylvania"), P("Warner Theatre", "Torrington", "Connecticut")], notExactWrong("Warner Theatre", "Erie"));
+  await runVenue("City Winery ATL, Ponce City Market", [P("City Winery", "New York", "New York", ["Winery", "Live music venue"]), P("City Winery Atlanta", "Atlanta", "Georgia", ["Winery", "Live music venue"])], notExactWrong("City Winery Atlanta", "Atlanta"));
+  await runVenue("The Fillmore Det, Midtown", [P("The Fillmore", "San Francisco", "California"), P("The Fillmore Detroit", "Detroit", "Michigan")], notExactWrong("The Fillmore Detroit", "Detroit"));
+  await runVenue("Palace Theatre, St Pual", [P("Palace Theatre", "Columbus", "Ohio", ["Performing arts theater"]), P("Palace Theatre", "Saint Paul", "Minnesota", ["Performing arts theater"]), P("Palace Theatre", "Stamford", "Connecticut", ["Performing arts theater"])], notExactWrong("Palace Theatre", "Saint Paul"));
+  await runVenue("Knitting Factory Rneo", [P("Knitting Factory Spokane", "Spokane", "Washington"), P("Knitting Factory Reno", "Reno", "Nevada")], notExactWrong("Knitting Factory Reno", "Reno"));
   const bb = () => [P("Billy Bob's", "Gallatin", "Tennessee", ["Night club", "Live music venue"]), P("Billy Bob's Texas", "Fort Worth", "Texas", ["Night club", "Live music venue"])];
   await runVenue("Billy Bob's TX", bb(), exactIs("Billy Bob's Texas", "Fort Worth"), "a name that ends with its state");
   await runVenue("Billy Bob's, Fort Worth", bb(), exactIs("Billy Bob's Texas", "Fort Worth"));
