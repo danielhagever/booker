@@ -283,14 +283,18 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
       // Music Hall on Chestnut" isn't, nor is "Hard Rock Live at Universal" Hard Rock Live at Etess Arena.
       const minor = (w: string) => w.length < 3 || SMALL.has(w);
       const skip = (ws: string[], from: number) => { let k = from; while (k < ws.length && minor(ws[k])) k++; return k; };
+      // Close: equal, cut off, one letter off, or two in a word of four letters or more ("Blews", "Pear 57",
+      // "Wiliamsberg"). Only short words
+      // typed ("Music Hall of", "City Winery at Pi"): they must open the longer name's next words.
       const k = skip(rest, 0);
-      const goesOn = k < rest.length && found.some((o) => {
+      const goesOn = found.some((o) => {
         const w = words(o.name);
         if (o === e || w.length <= n.length || !n.every((x, i) => w[i] === x)) return false;
+        if (k >= rest.length) return rest.every((x, i) => { const y = w[n.length + i]; return y !== undefined && (y === x || (i === rest.length - 1 && y.startsWith(x))); });
         const j = skip(w, n.length);
         if (j >= w.length) return false;
-        const t = rest[k], next = w[j];
-        return next === t || next.startsWith(t) || typoDistance(t, next) <= 1;
+        const t = rest[k], next = w[j], d = typoDistance(t, next);
+        return next === t || next.startsWith(t) || d <= (t.length >= 4 ? 2 : 1);
       });
       if (goesOn) continue;
       opens = Math.max(opens, place(rest).some((w) => w !== "city" && loc.all.has(w)) ? 2 : 1);

@@ -1,4 +1,4 @@
-// Name matching against 382 realistic inputs (test/name-cases.mjs). Run: npm test
+// Name matching against 391 realistic inputs (test/name-cases.mjs). Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveArtist, resolveVenue } from "../src/resolve.ts";
@@ -21,7 +21,7 @@ const is = (...want: string[]) => (out: string) => want.includes(out);
 const starts = (...want: string[]) => (out: string) => want.some((w) => out.startsWith(w));
 const eqList = (...xs: string[]) => (out: string) => out === JSON.stringify(xs);
 
-test("name matching: 382 realistic inputs, each with the answer a reasonable person expects", async () => {
+test("name matching: 391 realistic inputs, each with the answer a reasonable person expects", async () => {
   const wrong: string[] = [];
   let count = 0;
   const check = (kind: string, typed: string, out: string, ok: (o: string) => boolean) => {
@@ -34,6 +34,6 @@ test("name matching: 382 realistic inputs, each with the answer a reasonable per
     runArtist: async (typed: string, found: unknown[], ok: (o: string) => boolean) => check("artist", typed, show(await resolveArtist(fake(found), typed)), ok),
     runSplit: (text: string, ok: (o: string) => boolean) => check("split", text, JSON.stringify(names(text, 8).list.map((x) => x.name)), ok),
   });
-  assert.equal(count, 382);
+  assert.equal(count, 391);
   assert.deepEqual(wrong, []);
 });
