@@ -148,14 +148,18 @@ export const sizeOf = (p: number) => -Math.log10(1 - Math.min(p, 0.99999));
 export const fromSize = (s: number) => 1 - 10 ** -s;
 const WIDEN = 0.1;
 
-// Qloo's rooms for an act (places tagged live music venue or concert hall) include, for bigger acts, places
-// whose main use isn't shows (live: Handel Hendrix House, a museum; Dulwich Picture Gallery; a flea market and a
-// film studio for Phoebe Bridgers). Twelve are asked for, those are left out (never the venue's own room), and
-// the first six are kept in Qloo's order.
-const NOT_MAINLY_SHOWS = /\b(museum|gallery|flea market|thrift store|film production|photography|convention center|book ?store|book shop|gift shop|garden|historical landmark|tourist attraction|wedding venue|church|school|university|library|housing)\b/i;
+// Qloo's rooms for an act (places tagged live music venue or concert hall) can include places with no music
+// category at all (live: the ICA, a gallery and bookshop; Dulwich Picture Gallery; a flea market). Twelve are
+// asked for, those are left out (never the venue's own room), and the first six are kept in Qloo's order. A
+// place that is also filed as a music room stays, whatever else it is: the Ryman is also a museum, the Cavern
+// Club a tourist attraction.
+const SHOW_CATEGORY = /\b(live music|music venue|night ?club|jazz club|concert hall|bar|pub|lounge|performing arts|auditorium|amphitheat(er|re)|stage)\b/i;
 export function showRooms<T extends { id?: string; categories?: string[] }>(rooms: T[], keep: number, own?: string): T[] {
-  return rooms.filter((r) => r.id === own || !(r.categories ?? []).some((c) => NOT_MAINLY_SHOWS.test(c))).slice(0, keep);
+  return rooms.filter((r) => r.id === own || (r.categories ?? []).some((c) => SHOW_CATEGORY.test(c))).slice(0, keep);
 }
+// A room that is mainly something else (a museum that hosts concerts) isn't named as the best fit.
+const MAINLY_ELSE = /\b(museum|gallery|historical landmark|tourist attraction|flea market|film production)\b/i;
+export const mainlyShows = (r: { categories?: string[] }) => !(r.categories ?? []).some((c) => MAINLY_ELSE.test(c));
 const TASTE_GAP = 0.09;
 
 export async function forVenue(
@@ -472,7 +476,7 @@ export async function forArtist(
     ours: ["Cities are ordered by Qloo's affinity for the act there; a city Qloo has no score for comes last."],
     limits: [
       "Qloo measures taste, not capacity, fees or availability: check that a room's size fits before you pitch it.",
-      "Rooms are the places Qloo tags as live music venues or concert halls. For bigger acts Qloo also ranks museums, galleries and other places mainly used for something else; those are left out. Concert halls stay, classical ones included: check that a room books your kind of show.",
+      "Rooms are the places Qloo tags as live music venues or concert halls, in Qloo's order; places with no music category (a gallery, a flea market) are left out. Each room shows its categories: some are also museums or classical halls, so check that a room books your kind of show.",
       "A city's score compares the act with everything that city likes; it is a relative signal, not a ticket forecast.",
     ],
     degraded: false,

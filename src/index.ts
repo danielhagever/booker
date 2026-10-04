@@ -1,6 +1,6 @@
 import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import { forArtist, forVenue, type Named, type TourResult, type VenueResult } from "./booker.ts";
+import { forArtist, forVenue, mainlyShows, type Named, type TourResult, type VenueResult } from "./booker.ts";
 import { AppError, Budget, REQUEST_BUDGET, allow } from "./limits.ts";
 import { MAX_ACTS, MAX_CITIES, MAX_NAME, MAX_PITCHES, clean, cityList, names, validId } from "./input.ts";
 
@@ -27,7 +27,7 @@ const failure = (e: unknown) => {
 };
 
 // Bump whenever the pipeline or the result format changes, so no one gets yesterday's logic.
-const CACHE_VERSION = 29;
+const CACHE_VERSION = 30;
 
 async function sha(s: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -106,7 +106,9 @@ export function tourSummary(r: TourResult): string {
   const head = order.length
     ? `${r.artist.name}'s crowd is strongest in ${order[0]}${order.length > 1 ? `, then ${list(order.slice(1))}` : ""}.${unscored.length ? ` Qloo has no city score for ${list(unscored)}.` : ""}`
     : `Qloo has no city score for ${r.artist.name} in ${list(unscored)}.`;
-  const rooms = r.cities.filter((x) => x.rooms[0]).slice(0, 3).map((x) => `${x.rooms[0].name} in ${city(x)}`);
+  // Named as the best fit: each city's first room that is mainly a music room (not a museum that hosts concerts).
+  const best = (x: TourResult["cities"][number]) => x.rooms.find(mainlyShows) ?? x.rooms[0];
+  const rooms = r.cities.filter((x) => x.rooms[0]).slice(0, 3).map((x) => `${best(x).name} in ${city(x)}`);
   return `${head}${rooms.length ? ` Best-fit rooms: ${list(rooms)}.` : ""}`;
 }
 

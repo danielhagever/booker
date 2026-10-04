@@ -1,7 +1,7 @@
 // Booker's pipelines against a mock Qloo shaped like the live API. Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { forArtist, forVenue, sizeOf, fromSize, cityOf, showRooms } from "../src/booker.ts";
+import { forArtist, forVenue, sizeOf, fromSize, cityOf, showRooms, mainlyShows } from "../src/booker.ts";
 import { resembles, nameKey, squashed, isRoom, chooseVenue, resolveArtist, resolveVenue } from "../src/resolve.ts";
 import { names, cityList } from "../src/input.ts";
 import { Budget } from "../src/limits.ts";
@@ -530,15 +530,19 @@ test("city lookup: towns over islands, province and state codes worldwide, and e
   }
 });
 
-test("places mainly used for something else are left out of the rooms, in Qloo's order, never the venue's own (seen live)", () => {
+test("rooms: places with no music category are left out, in Qloo's order; music rooms stay whatever else they are (seen live)", () => {
   const r = (id: string, name: string, ...categories: string[]) => ({ id, name, categories });
-  const london = [
+  const rooms = [
     r("1", "Handel Hendrix House", "Historical landmark", "Gift shop", "Museum", "Live music venue"),
-    r("2", "LSO St Luke's", "Rehearsal studio", "Recording studio", "Event venue", "Live music venue"),
-    r("3", "Institute of Contemporary Arts", "Tourist attraction", "Book store", "Art gallery"),
-    r("4", "IKLECTIK", "Art center", "Live music venue"),
-    r("5", "The Lexington", "Pub", "Live music venue"),
+    r("2", "Institute of Contemporary Arts", "Tourist attraction", "Book store", "Art gallery"),
+    r("3", "Ryman Auditorium", "Museum", "Performing arts theater", "Gift shop", "Live music venue"),
+    r("4", "The Cavern Club", "Live music venue", "Bar", "Tourist attraction"),
+    r("5", "Dulwich Picture Gallery", "Cafe", "Gift shop", "Garden", "Event venue"),
+    r("6", "The Old Bar", "Pub", "Bar", "Art gallery", "Live music bar"),
+    r("7", "Brazos Hall", "Concert hall", "Wedding venue"),
+    r("8", "The Sustainable Studio", "Art studio", "Coffee shop"),
   ];
-  assert.deepEqual(showRooms(london, 6).map((x) => x.name), ["LSO St Luke's", "IKLECTIK", "The Lexington"]);
-  assert.deepEqual(showRooms(london, 2, "1").map((x) => x.name), ["Handel Hendrix House", "LSO St Luke's"], "the venue's own room stays");
+  assert.deepEqual(showRooms(rooms, 12).map((x) => x.name), ["Handel Hendrix House", "Ryman Auditorium", "The Cavern Club", "The Old Bar", "Brazos Hall"]);
+  assert.deepEqual(showRooms(rooms, 2, "2").map((x) => x.name), ["Handel Hendrix House", "Institute of Contemporary Arts"], "the venue's own room stays");
+  assert.equal(showRooms(rooms, 12).find(mainlyShows)!.name, "Brazos Hall", "a museum or tourist attraction isn't named the best fit");
 });
