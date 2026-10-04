@@ -101,23 +101,36 @@ const candidate = (e: Entity): Candidate => ({
 // Errors that mean "this one name isn't in Qloo"; anything else stops the search with its real message.
 const notFound = (e: unknown) => e instanceof AppError && (e.status === 400 || e.status === 404);
 
-async function resolveArtists(q: Qloo, names: Named[]): Promise<{ found: Resolved[]; missing: string[]; same: string[] }> {
-  const out = await Promise.all(
-    names.map((n) =>
-      (n.id ? resolveChosen(q, n.name, n.id) : resolveArtist(q, n.name)).catch((e) => {
-        if (notFound(e)) return null;
-        throw e;
-      }),
-    ),
-  );
+export async function resolveArtists(q: Qloo, names: Named[]): Promise<{ found: Resolved[]; missing: string[]; same: string[] }> {
+  const one = (n: Named) =>
+    (n.id ? resolveChosen(q, n.name, n.id) : resolveArtist(q, n.name)).catch((e) => {
+      if (notFound(e)) return null;
+      throw e;
+    });
+  let out: { name: string; r: Resolved | null }[] = await Promise.all(names.map(async (n) => ({ name: n.name, r: await one(n) })));
+  // Two acts joined in a list ("Big Thief, Waxahatchee & Snail Mail"): when the joined name isn't an exact
+  // match, or matched only one of the two, and each part is an exact match on its own, both are used. At most
+  // twice per search, for the call budget; "Simon & Garfunkel" and "Earth, Wind & Fire" stay one act.
+  let splits = 0;
+  for (let i = 0; i < out.length && splits < 2; i++) {
+    const { name, r } = out[i];
+    const join = [...name.matchAll(/\s+(?:&|and|\+)\s+/gi)].pop();
+    if (names[i]?.id || !join || r?.match === "exact") continue;
+    const parts = [name.slice(0, join.index), name.slice(join.index! + join[0].length)].map((x) => x.trim());
+    if (parts.some((x) => x.length < 2)) continue;
+    splits++;
+    const both = await Promise.all(parts.map((x) => one({ name: x })));
+    if (both.every((b) => b?.match === "exact") && (!r || both.some((b) => b!.entity.id === r.entity.id)))
+      out = [...out.slice(0, i), ...both.map((b, k) => ({ name: parts[k], r: b })), ...out.slice(i + 1)];
+  }
   const found: Resolved[] = [];
   const missing: string[] = [];
   const same: string[] = []; // "Black Angels" when "The Black Angels" was already named: one act, counted once
-  out.forEach((r, i) => {
-    if (!r) missing.push(names[i].name);
-    else if (found.some((f) => f.entity.id === r.entity.id)) same.push(nameKey(names[i].name) === nameKey(r.entity.name) ? r.entity.name : `${names[i].name} (${r.entity.name})`);
+  for (const { name, r } of out) {
+    if (!r) missing.push(name);
+    else if (found.some((f) => f.entity.id === r.entity.id)) same.push(nameKey(name) === nameKey(r.entity.name) ? r.entity.name : `${name} (${r.entity.name})`);
     else found.push(r);
-  });
+  }
   return { found, missing, same };
 }
 const twice = (same: string[]) => (same.length ? `; the same act named twice: ${same.join(", ")}` : "");
@@ -428,6 +441,12 @@ export async function forArtist(
     const c = await cityCenter(env.CACHE, budget, text);
     if (!c) {
       notFoundCities.push(text);
+      continue;
+    }
+    // The same city typed twice ("Chicago, Illinois" and "chicago") is scored once.
+    const again = cities.find((x) => km(x, c) < 2);
+    if (again) {
+      trace.push({ step: "Check", detail: `"${text}" is the same city as "${again.input}"; it's scored once` });
       continue;
     }
     let affinity: number | undefined;

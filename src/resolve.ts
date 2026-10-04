@@ -26,7 +26,7 @@ const ARTICLES = new Set(["the", "a", "an"]);
 const FOLD: Record<string, string> = { "\u00f8": "o", "\u00e6": "ae", "\u0153": "oe", "\u00df": "ss", "\u0142": "l", "\u0111": "d", "\u00fe": "th" };
 // Accents are folded ("Beyonce" is Beyoncé); apostrophes, colons and dots join ("Cat's" is "Cats", "9:30"
 // is "930"); other punctuation separates words.
-const SPELLING: Record<string, string> = { theater: "theatre", amphitheater: "amphitheatre", centre: "center" };
+const SPELLING: Record<string, string> = { theater: "theatre", amphitheater: "amphitheatre", centre: "center", ave: "avenue", blvd: "boulevard" };
 // Letters written as signs read as letters: P!nk is Pink (between consonants only: GO!GO!7188 is "go go"),
 // Ke$ha is Kesha, Joey Bada$$ is Badass, $uicideboy$ is Suicideboys.
 const allWords = (s: string) =>
@@ -131,6 +131,31 @@ const CITY_ALIASES: Record<string, string[]> = {
   "new york": ["nyc"], brooklyn: ["nyc"], queens: ["nyc"], bronx: ["nyc"], manhattan: ["nyc"], "san francisco": ["sf"],
   "los angeles": ["la"], portland: ["pdx"], philadelphia: ["philly"], "new orleans": ["nola"], washington: ["dc"],
   "kansas city": ["kc"], "salt lake city": ["slc"], "las vegas": ["vegas"], chicago: ["chi"], austin: ["atx"],
+  minneapolis: ["mpls"], "saint louis": ["stl"], "st louis": ["stl"],
+};
+// Cities Qloo files separately that people type as the big city next door: "Troubadour, Los Angeles" is in
+// West Hollywood, "Crystal Ballroom, Boston" in Somerville, "Cat's Cradle, Chapel Hill" in Carrboro.
+const METRO: Record<string, string[]> = {
+  "los angeles": ["west hollywood", "hollywood", "north hollywood", "santa monica", "pasadena", "burbank", "glendale", "inglewood", "culver city", "long beach"],
+  "new york": ["brooklyn", "queens", "bronx", "manhattan", "jersey city", "hoboken", "long island city"],
+  boston: ["cambridge", "somerville", "allston", "brookline", "medford"],
+  "san francisco": ["oakland", "berkeley"],
+  minneapolis: ["saint paul", "st paul"],
+  denver: ["morrison", "englewood", "aurora", "lakewood"],
+  washington: ["arlington", "silver spring", "alexandria", "bethesda"],
+  chicago: ["evanston", "cicero", "berwyn"],
+  philadelphia: ["camden"],
+  atlanta: ["decatur"],
+  miami: ["miami beach"],
+  detroit: ["ferndale", "royal oak", "hamtramck"],
+  phoenix: ["tempe", "scottsdale", "mesa"],
+  "chapel hill": ["carrboro"],
+};
+const NEXT_TO = new Map(Object.entries(METRO).flatMap(([core, near]) => near.map((c) => [words(c).join(" "), core] as const)));
+// Australian states as people abbreviate them ("Corner Hotel, Melbourne VIC").
+const AU_STATES: Record<string, string> = {
+  victoria: "vic", "new south wales": "nsw", queensland: "qld", "western australia": "wa", "south australia": "sa", tasmania: "tas",
+  "australian capital territory": "act", "northern territory": "nt",
 };
 const dropEnd = (ws: string[], drop: (w: string) => boolean) => {
   const out = [...ws];
@@ -155,14 +180,21 @@ function locationOf(e: Entity): { all: Set<string>; city: string[]; aliases: str
   if (ap) all.add(ap);
   if (e.countryCode === "US") ["us", "usa"].forEach((w) => all.add(w));
   if (e.countryCode === "GB") all.add("uk");
+  // Elsewhere the country's two-letter code ("Lido, Berlin, DE"; a US state code stays the state's) and an
+  // Australian state's abbreviation.
+  else if (e.countryCode && !us) all.add(e.countryCode.toLowerCase());
+  if (e.countryCode === "AU" && AU_STATES[region.join(" ")]) all.add(AU_STATES[region.join(" ")]);
   const aliases = us ? (CITY_ALIASES[city.join(" ")] ?? []) : [];
   aliases.forEach((w) => all.add(w));
+  // The big city next door, with its nicknames ("Troubadour, LA").
+  const core = us ? NEXT_TO.get(city.join(" ")) : undefined;
+  if (core) [...words(core), ...(CITY_ALIASES[core] ?? [])].forEach((w) => all.add(w));
   if (city.length) all.add("city"); // "New York City", "Mexico City"
   return { all, city, aliases };
 }
 // Words after a name that say nothing either way: a zip code, and "in" or "at" before the place ("House of
 // Blues in Chicago"; a final "IN" is Indiana). Other numbers can be part of a name (Stage 48, Terminal 5).
-const fillerAt = (rest: string[], i: number) => /^\d{5}(\d{4})?$/.test(rest[i]) || ((rest[i] === "in" || rest[i] === "at") && i < rest.length - 1);
+const fillerAt = (rest: string[], i: number) => /^\d{5}(\d{4})?$/.test(rest[i]) || ((rest[i] === "in" || rest[i] === "at" || rest[i] === "the") && i < rest.length - 1);
 
 // The rest of the typed words after the candidate's name, if its name opens them (compared without spaces).
 function afterName(typed: string[], name: string[]): string[] | null {
@@ -236,7 +268,16 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
         if (ownPlace(typed.slice(k))) longerOwn = true;
         else if (otherPlace(typed.slice(k))) longerOther = true;
       }
-    return { e, order, inCity, full, bare, bareAnywhere, elsewhere, longerOwn, longerOther, closeness, resembles: wordsResemble(typedContent, near, false), music };
+    // The name opens what was typed and the rest names no other candidate's place: a neighborhood or a street
+    // ("Mohawk, East Austin", "The Lexington, Islington", "Mohawk on Red River"). A closest match, better
+    // when the rest also holds the room's own city.
+    let opens = 0;
+    for (const n of named) {
+      const rest = afterName(typed, n);
+      if (!rest || !place(rest).length || !place(rest).every((w) => !anyPlace.has(w) || loc.all.has(w))) continue;
+      opens = Math.max(opens, place(rest).some((w) => w !== "city" && loc.all.has(w)) ? 2 : 1);
+    }
+    return { e, order, inCity, full, bare, bareAnywhere, elsewhere, longerOwn, longerOther, opens, closeness, resembles: wordsResemble(typedContent, near, false), music };
   });
 
   // 2. Where: the typed city, or its metro area (within 60 km of a candidate in the typed city: The Sinclair
@@ -258,6 +299,8 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
       : m.full ? 4
       : m.bare ? 5
       : m.elsewhere ? 6
+      : m.opens === 2 ? 6.3
+      : m.opens === 1 ? 6.6
       : m.resembles ? 7
       : 9;
     const located = typed.some((w) => w !== "city" && locationOf(m.e).all.has(w));
@@ -352,13 +395,16 @@ export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | 
   // Not it? doesn't offer a mere plural of an exact one-word name ("Kiss" isn't offered Kisses), but does for
   // longer names ("Black Key" is offered The Black Keys) and when nothing matched exactly ("The Car": The Cars).
   const plurals = typedWords.filter((w) => !SMALL.has(w)).length > 1 || !exact.length;
-  const offered = (e: Entity) => sure(e) || share(typedWords, words(e.name), plurals) > 0.5;
+  // Nor, next to an exact match, a fragment of what was typed ("Graves" for Shakey Graves, W.E.T. for Wet Leg).
+  const fragment = (e: Entity) => !!exact.length && part(e) && !inside(e) && !exact.includes(e) && !same(e);
+  const offered = (e: Entity) => (sure(e) && !fragment(e)) || share(typedWords, words(e.name), plurals) > 0.5;
   const pick = exact[0] ?? list[0];
   return {
     input,
     entity: pick,
     match: exact.length === 1 ? "exact" : exact.length > 1 ? "ambiguous" : "closest",
-    alternatives: list.filter((e) => e.id !== pick.id && offered(e)).slice(0, 4).map((e) => ({ id: e.id, name: label(e), note: e.genres?.[0] })),
+    // Qloo's search gives artists no genres, so a same-named act is told apart by its popularity.
+    alternatives: list.filter((e) => e.id !== pick.id && offered(e)).slice(0, 4).map((e) => ({ id: e.id, name: label(e), note: e.genres?.[0] ?? (e.popularity !== undefined ? `popularity ${e.popularity.toFixed(2)}` : undefined) })),
   };
 }
 
@@ -382,14 +428,15 @@ const isMusic = (e: Entity) => (e.categories?.length ? e.categories.some((c) => 
 // Venues: "The Empty Bottle, Chicago". The whole text goes to Qloo's place search (the city helps it);
 // chooseVenue decides exact, ambiguous or closest.
 export async function resolveVenue(q: Qloo, input: string): Promise<Resolved | null> {
-  let found = (await q.search(input.replace(/,/g, " "), "urn:entity:place", 8)).filter(isRoom);
+  const first = await q.search(input.replace(/,/g, " "), "urn:entity:place", 8);
+  let found = first.filter(isRoom);
   let chosen = chooseVenue(input, found);
   // The city in the query can throw Qloo's search off ("Brooklyn Steel New York" returns hotels and a
   // steakhouse, not Brooklyn Steel): when nothing matched by name, ask again with the name alone (before the
-  // comma, or without the place words that end the text).
+  // comma, or without the place words that end the text, as any result places them, room or not).
   let name = input.split(",")[0].trim();
   if (name === input.trim()) {
-    const places = new Set(found.flatMap((e) => [...locationOf(e).all]));
+    const places = new Set(first.flatMap((e) => [...locationOf(e).all]));
     const ws = name.split(/\s+/);
     while (ws.length > 1 && places.has(words(ws[ws.length - 1]).join(" "))) ws.pop();
     name = ws.join(" ");

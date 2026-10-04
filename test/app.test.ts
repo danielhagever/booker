@@ -77,7 +77,7 @@ test("MCP: both tools are listed with their guidance, and a call answers in word
   const list = await (await worker.fetch(new Request("https://booker.test/mcp", { method: "POST", headers, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }) }), env())).text();
   assert.match(list, /find_acts_for_venue/);
   assert.match(list, /find_rooms_for_artist/);
-  assert.match(list, /ask the person which one they meant/);
+  assert.match(list, /ask the person whether it's the one they meant/);
   const m = mockFetch(qloo);
   try {
     const call = new Request("https://booker.test/mcp", {
@@ -116,7 +116,7 @@ test("MCP: the answer names pitches that were only a closest match, with alterna
       body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "find_acts_for_venue", arguments: { venue: "The Empty Bottle, Chicago", acts: ["Wednesday"], pitches: ["Wednsday", "Nobody Real"] } } }),
     });
     const text = JSON.parse((await (await worker.fetch(call, env())).text()).split("\n").find((l) => l.startsWith("data: "))!.slice(6)).result.content[0].text;
-    assert.match(text, /Pitch "Wednsday" was matched to Wednesday \(closest Qloo match, not exactly what was typed\); alternatives: Wednesday Campanella \(Indie\) \[id /);
+    assert.match(text, /Pitch "Wednsday" was matched to Wednesday \[id [0-9a-f-]+\] \(closest Qloo match, not exactly what was typed\); alternatives: Wednesday Campanella \(Indie\) \[id /);
     assert.match(text, /Pitches not found in Qloo: Nobody Real\./);
   } finally {
     m.restore();
@@ -185,7 +185,7 @@ test("only new searches count against the hourly limit; a saved answer is free",
 test("both MCP tools tell the agent to ask the person when a name was only a closest match", async () => {
   const headers = { "content-type": "application/json", accept: "application/json, text/event-stream", "mcp-protocol-version": "2025-06-18" };
   const list = await (await worker.fetch(new Request("https://booker.test/mcp", { method: "POST", headers, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }) }), env())).text();
-  assert.equal(list.match(/ask the person which one they meant/g)?.length, 2);
+  assert.equal(list.match(/ask the person whether it's the one they meant/g)?.length, 2);
 });
 
 test("the map keeps Leaflet's own zoom listener, and a late answer can't land on the other tab", () => {
@@ -232,4 +232,36 @@ test("the artist summary doesn't repeat a city in a room's name, and shows a fou
     { label: "Berlin, Germany", affinity: 0.99962, rooms: [] },
   ] };
   assert.equal(tourSummary(t), "Lana Del Rey's crowd is strongest in Paris (0.9998), then Berlin (0.9996). Best-fit rooms: The American Cathedral in Paris.");
+});
+
+test("MCP: one tool call per request, and blank names are refused before any search counts or Qloo call", async () => {
+  const headers = { "content-type": "application/json", accept: "application/json, text/event-stream", "mcp-protocol-version": "2025-06-18" };
+  const call = (id: number, name: string, args: unknown) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
+  const m = mockFetch(qloo);
+  try {
+    const batch = await worker.fetch(new Request("https://booker.test/mcp", { method: "POST", headers, body: JSON.stringify([call(1, "find_rooms_for_artist", { artist: "Wednesday", cities: ["Chicago, Illinois"] }), call(2, "find_rooms_for_artist", { artist: "Hovvdy", cities: ["Chicago, Illinois"] })]) }), env());
+    assert.equal(batch.status, 400);
+    assert.match(await batch.text(), /one tool call per request/);
+    assert.equal(m.calls.length, 0);
+    for (const [name, args] of [["find_acts_for_venue", { venue: "The Empty Bottle, Chicago", acts: ["   "] }], ["find_rooms_for_artist", { artist: " ", cities: ["Chicago, Illinois"] }]] as const) {
+      const text = await (await worker.fetch(new Request("https://booker.test/mcp", { method: "POST", headers, body: JSON.stringify(call(3, name, args)) }), env())).text();
+      const data = JSON.parse(text.split("\n").find((l) => l.startsWith("data: "))!.slice(6));
+      assert.equal(data.result.isError, true, name);
+    }
+    assert.equal(m.calls.length, 0);
+  } finally {
+    m.restore();
+  }
+});
+
+test("the venue summary doesn't repeat a city that's in the venue's name", () => {
+  const r: any = { venue: { name: "Mohawk Austin", city: "Austin, Texas" }, fits: [{ name: "Allah-Las" }], bills: [], inbox: [] };
+  assert.match(venueSummary(r), /^For Mohawk Austin, the acts/);
+  assert.match(venueSummary({ ...r, venue: { name: "The Empty Bottle", city: "Chicago, Illinois" } }), /^For The Empty Bottle \(Chicago\), the acts/);
+});
+
+test("the inbox shows how each pitch was matched, and Not it? can change a pitch as well as an act", () => {
+  assert.match(page, /pickRow\(p, `altP\$\{i\}`, "pitch"\)/);
+  assert.match(page, /chosen\(p\.input, "pitch"\)/);
+  assert.match(page, /p\.match === "ambiguous" \? "several match this name"/);
 });

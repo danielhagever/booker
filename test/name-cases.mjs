@@ -1,4 +1,4 @@
-// 348 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
+// 367 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
 // the answer a reasonable person expects. Built by an independent review that ran them through ten versions
 // of the matcher; every one of these was right in at least one version, and all are right now.
 export default async function ({ place, art, runVenue, runArtist, runSplit, is, starts, eqList }) {
@@ -173,7 +173,7 @@ export default async function ({ place, art, runVenue, runArtist, runSplit, is, 
   await runVenue("Fox Theatre Atlanta GA", [P("Fox Tucson Theatre", "Tucson", "Arizona"), P("Fox Theatre", "Atlanta", "Georgia")], exactIs("Fox Theatre", "Atlanta"));
   await runVenue("The Fox, Oakland", [P("Fox Theatre", "Atlanta", "Georgia"), P("Fox Oakland Theatre", "Oakland", "California")], notExactWrong("Fox Oakland Theatre", "Oakland"));
   await runVenue("Crystal Ballroom, Portland", [P("Crystal Ballroom", "Somerville", "Massachusetts"), P("Crystal Ballroom", "Portland", "Oregon")], exactIs("Crystal Ballroom", "Portland"));
-  await runVenue("Crystal Ballroom, Boston", [P("Crystal Ballroom", "Portland", "Oregon"), P("Crystal Ballroom", "Somerville", "Massachusetts")], (o) => !o.includes("exact"));
+  await runVenue("Crystal Ballroom, Boston", [P("Crystal Ballroom", "Portland", "Oregon"), P("Crystal Ballroom", "Somerville", "Massachusetts")], notExactWrong("Crystal Ballroom", "Somerville"), "Somerville is in Boston's area");
   await runVenue("Crystal Ballroom, Somerville, MA", [P("Crystal Ballroom", "Portland", "Oregon"), P("Crystal Ballroom", "Somerville", "Massachusetts")], exactIs("Crystal Ballroom", "Somerville"));
   // Non-US
   const uk = (name, city, region, cats = ["Live music venue"]) => ({ ...P(name, city, region, cats), country: "United Kingdom", countryCode: "GB" });
@@ -400,4 +400,28 @@ export default async function ({ place, art, runVenue, runArtist, runSplit, is, 
   await runSplit("Rock 'n' Roll Soldiers, Wednesday", eqList("Rock 'n' Roll Soldiers", "Wednesday"));
   await runSplit("'N Sync, Wednesday, Keb' Mo'", eqList("'N Sync", "Wednesday", "Keb' Mo'"));
   await runSplit("Wednesday\nSnail Mail\n\nDehd", eqList("Wednesday", "Snail Mail", "Dehd"));
+
+  // Pass 41 (2026-10-04): a broad sweep of how talent buyers type rooms and lists.
+  await runVenue("Mohawk, East Austin", mohawk(), notExactWrong("Mohawk Austin", "Austin"), "a neighborhood typed");
+  await runVenue("Mohawk, Downtown Austin", mohawk(), notExactWrong("Mohawk Austin", "Austin"));
+  await runVenue("Mohawk on Red River", mohawk(), notExactWrong("Mohawk Austin", "Austin"), "a street typed; the music room first");
+  const lex = () => [P("Lexington Theatre", "Lexington", "Kentucky", ["Performing arts theater"]), uk("The Lexington", "London", "England", ["Pub", "Live music venue"])];
+  await runVenue("The Lexington, Islington", lex(), notExactWrong("The Lexington", "London"));
+  await runVenue("The Lexington, Islington, London", lex(), notExactWrong("The Lexington", "London"));
+  const trbs = () => [uk("The Troubadour", "London", "England", ["Cafe", "Live music venue"]), P("The Troubadour", "West Hollywood", "California", ["Night club", "Live music venue"])];
+  await runVenue("Troubadour, Los Angeles", trbs(), notExactWrong("The Troubadour", "West Hollywood"), "West Hollywood is in LA's area");
+  await runVenue("The Troubadour, LA", trbs(), notExactWrong("The Troubadour", "West Hollywood"));
+  await runVenue("The Troubadour, London", trbs(), exactIs("The Troubadour", "London"));
+  await runVenue("First Ave Mpls", [P("7th St Entry", "Minneapolis", "Minnesota"), P("First Avenue", "Minneapolis", "Minnesota", ["Night club", "Live music venue"])], exactIs("First Avenue", "Minneapolis"));
+  await runVenue("First Ave, Mpls", [P("7th St Entry", "Minneapolis", "Minnesota"), P("First Avenue", "Minneapolis", "Minnesota", ["Night club", "Live music venue"])], exactIs("First Avenue", "Minneapolis"));
+  const abroad = (name, city, region, country, countryCode) => ({ ...P(name, city, region), country, countryCode });
+  await runVenue("Paradiso, Amsterdam, NL", [abroad("Paradiso", "Amsterdam", "North Holland", "Netherlands", "NL")], exactIs("Paradiso", "Amsterdam"));
+  await runVenue("Paradiso, Amsterdam, The Netherlands", [abroad("Paradiso", "Amsterdam", "North Holland", "Netherlands", "NL")], exactIs("Paradiso", "Amsterdam"));
+  await runVenue("Lido, Berlin, DE", [abroad("Lido", "Berlin", "Berlin", "Germany", "DE")], exactIs("Lido", "Berlin"));
+  await runVenue("Corner Hotel, Melbourne VIC", [abroad("Corner Hotel", "Melbourne", "Victoria", "Australia", "AU")], exactIs("Corner Hotel", "Melbourne"));
+  await runVenue("Lido, Wilmington, DE", [abroad("Lido", "Berlin", "Berlin", "Germany", "DE")], (o) => !o.includes("exact"), "DE is also Delaware");
+  await runSplit("Big Thief\tWaxahatchee\tSnail Mail", eqList("Big Thief", "Waxahatchee", "Snail Mail"), "a spreadsheet row");
+  await runSplit("Big Thief / Waxahatchee / Snail Mail", eqList("Big Thief", "Waxahatchee", "Snail Mail"));
+  await runSplit("Big Thief | Waxahatchee", eqList("Big Thief", "Waxahatchee"));
+  await runSplit("AC/DC, Wednesday", eqList("AC/DC", "Wednesday"));
 }

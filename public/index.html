@@ -213,7 +213,7 @@ $("goArtist").onclick = () => post("/api/artist", { artist: $("artist").value, c
 
 // "Not it?": a name that wasn't one exact match can be swapped for another Qloo candidate, by ID.
 function pickRow(p, key, kind) {
-  const badge = p.match === "closest" ? `<span class="badge">closest match</span>` : p.match === "ambiguous" ? `<span class="badge">several share this name</span>` : p.match === "chosen" ? `<span class="badge">your choice</span>` : "";
+  const badge = p.match === "closest" ? `<span class="badge">closest match</span>` : p.match === "ambiguous" ? `<span class="badge">several match this name</span>` : p.match === "chosen" ? `<span class="badge">your choice</span>` : "";
   // Offered whenever Qloo had other candidates, so even a wrong "exact" can be put right.
   const choose = p.match !== "chosen" && p.alternatives.length
     ? `<label class="m" for="${key}" style="margin:0">Not it?</label><select id="${key}" data-kind="${kind}" data-input="${esc(p.input)}"><option value="">${esc(p.name)}</option>${p.alternatives.map((a) => `<option value="${esc(a.id)}" data-name="${esc(a.name)}">${esc(a.name)}${a.note ? ` · ${esc(a.note)}` : ""}</option>`).join("")}</select>`
@@ -248,8 +248,10 @@ function actCard(c, lo, hi) {
 function renderVenue(d, body) {
   const affs = [...d.fits, ...d.openers].map((c) => c.affinity).filter((a) => a !== undefined);
   const lo = Math.min(...affs, 1), hi = Math.max(...affs, 0);
-  const picks = [pickRow(d.venue, "altV", "venue"), ...d.acts.map((a, i) => pickRow(a, `altA${i}`, "act"))].join("");
-  const unsure = [d.venue, ...d.acts].some((p) => p.match !== "chosen" && p.alternatives.length);
+  // Pitches that weren't one exact match, or that had other candidates, are listed too, so they can be put right.
+  const pitchPicks = d.inbox.filter((p) => p.id && p.alternatives && (p.match !== "exact" || p.alternatives.length));
+  const picks = [pickRow(d.venue, "altV", "venue"), ...d.acts.map((a, i) => pickRow(a, `altA${i}`, "act")), ...pitchPicks.map((p, i) => pickRow(p, `altP${i}`, "pitch"))].join("");
+  const unsure = [d.venue, ...d.acts, ...pitchPicks].some((p) => p.match !== "chosen" && p.alternatives.length);
   $("side").innerHTML = `
     <div class="card"><h2>Matched in Qloo</h2>
       <div class="m" style="margin-bottom:6px">${esc(d.venue.name)}${d.venue.address ? ` · ${esc(d.venue.address)}` : ""}${d.qlooCity ? ` · Qloo city: ${esc(d.qlooCity)}` : ""}</div>
@@ -261,7 +263,8 @@ function renderVenue(d, body) {
     ${d.band ? `<div class="card"><h2>Your room's size</h2><p class="m" style="font-size:14px;margin:0">The acts you named sit between <b style="color:var(--ink)">${f3(d.band.min)}</b> and <b style="color:var(--ink)">${f3(d.band.max)}</b> on Qloo's popularity scale. Acts that fit are looked for around that range; openers below it.</p></div>` : ""}
     ${d.roomFans.length ? `<div class="card"><h2>What Qloo says your room's visitors like</h2><p class="m" style="margin:0 0 8px">Artists liked by people who like ${esc(d.venue.name)} itself, at your size. Qloo's view of the venue's visitors; it can differ from who buys your tickets.</p>${d.roomFans.map((c) => `<span class="tag" style="font-size:13px">${esc(c.name)}</span>`).join(" ")}</div>` : ""}
     ${d.rivals.rooms.length ? `<div class="card"><h2>Rooms in town that fit ${esc(d.rivals.act)}</h2>${d.rivals.rooms.map((r, i) => `<div class="row"><span>#${i + 1} ${esc(r.name)}${r.you ? ` <span class="v fits">your room</span>` : ""}${(r.categories || []).length ? ` <span class="m">· ${esc(roomCats(r.categories))}</span>` : ""}</span><span class="score">${f3(r.affinity)}</span></div>`).join("")}<p class="m" style="margin:8px 0 0">Qloo's ranking of live music venues in ${esc(d.city || "the city")} for this act's fans: the rooms that compete for the same show.${d.rivals.rooms.some((r) => r.you) ? "" : ` ${esc(d.venue.name)} isn't in Qloo's top ${d.rivals.rooms.length} for this act.`}</p></div>` : ""}`;
-  const inbox = d.inbox.length ? `<div class="card"><h2>Your inbox</h2>${d.inbox.map((p) => `<div class="row"><span><b>${esc(p.name)}</b>${p.input && p.input.toLowerCase() !== p.name.toLowerCase() ? ` <span class="m">(you wrote ${esc(p.input)})</span>` : ""}<br><span class="m">${esc(p.why)}</span></span><span><span class="v ${esc(p.verdict)}">${esc(VERDICT[p.verdict] || p.verdict)}</span></span></div>`).join("")}</div>` : "";
+  const matchNote = (p) => (p.match === "closest" ? "closest match" : p.match === "ambiguous" ? "several match this name" : p.match === "chosen" ? "your choice" : "");
+  const inbox = d.inbox.length ? `<div class="card"><h2>Your inbox</h2>${d.inbox.map((p) => `<div class="row"><span><b>${esc(p.name)}</b>${p.input && p.input.toLowerCase() !== p.name.toLowerCase() ? ` <span class="m">(you wrote ${esc(p.input)})</span>` : ""}${matchNote(p) ? ` <span class="badge">${matchNote(p)}</span>` : ""}<br><span class="m">${esc(p.why)}</span></span><span><span class="v ${esc(p.verdict)}">${esc(VERDICT[p.verdict] || p.verdict)}</span></span></div>`).join("")}${pitchPicks.some((p) => p.alternatives.length) ? `<p class="m" style="margin:8px 0 0">Not the act you meant? Pick another under Matched in Qloo.</p>` : ""}</div>` : "";
   $("results").innerHTML = `
     <div class="card"><p class="summary">${esc(d.summary)}</p><p class="m" style="margin:0">Ranked by Qloo for fans of ${esc(d.acts.map((a) => a.name).join(", "))}${d.city ? `, in ${esc(d.qlooCity || d.city)}` : ""}. Bars span the lowest to the highest Qloo affinity shown.</p></div>
     ${d.bills.length ? `<div class="card"><h2>Bills you could announce</h2>${d.bills.map((b) => `<div class="bill"><b>${esc(b.headliner)}</b><span class="m">with</span><b style="font-weight:600">${esc(b.opener)}</b><span class="score" style="margin-left:auto" title="Qloo affinity of the opener with the headliner's fans">${f3(b.overlap)}</span></div>`).join("")}<p class="m" style="margin:6px 0 0">The number is how much the headliner's fans like the opener (Qloo affinity).</p></div>` : ""}
@@ -280,7 +283,8 @@ function wireRedo(d, body) {
     const chosen = (input, kind) => { const s = [...document.querySelectorAll(`#picks select[data-kind="${kind}"]`)].find((x) => x.dataset.input === input); return s && s.value ? { name: input, id: s.value } : null; };
     const venue = chosen(d.venue.input, "venue") || (d.venue.match === "chosen" ? { name: d.venue.input, id: d.venue.id } : { name: d.venue.input });
     const acts = d.acts.map((a) => chosen(a.input, "act") || (a.match === "chosen" ? { name: a.input, id: a.id } : { name: a.input })).concat(d.unresolved.map((name) => ({ name })));
-    post("/api/venue", { venue, acts, pitches: body.pitches, rising: body.rising }, VENUE_STEPS, renderVenue);
+    const pitches = d.inbox.map((p) => chosen(p.input, "pitch") || (p.match === "chosen" ? { name: p.input, id: p.id } : { name: p.input }));
+    post("/api/venue", { venue, acts, pitches, rising: body.rising }, VENUE_STEPS, renderVenue);
   };
 }
 

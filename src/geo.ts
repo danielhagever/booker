@@ -33,6 +33,7 @@ const OTHER_REGIONS: Record<string, string[]> = {
   ns: ["Nova Scotia"], nb: ["New Brunswick"], nl: ["Newfoundland and Labrador"], pe: ["Prince Edward Island"], yt: ["Yukon"],
   nu: ["Nunavut"], nt: ["Northwest Territories", "Northern Territory"], nsw: ["New South Wales"], vic: ["Victoria"],
   qld: ["Queensland"], wa: ["Western Australia"], sa: ["South Australia"], tas: ["Tasmania"], act: ["Australian Capital Territory"],
+  nyc: ["New York"], // "Brooklyn, NYC"
 };
 // The UK's nations are regions (admin1), not the whole UK: "Bangor, Wales" isn't Bangor in Northern Ireland.
 const COUNTRY_WORDS: Record<string, string> = { usa: "us", "united states": "us", us: "us", uk: "gb", "united kingdom": "gb" };
@@ -63,6 +64,13 @@ const ALIASES: Record<string, string> = {
   dc: "Washington, DC", "washington dc": "Washington, DC", cdmx: "Mexico City", "ciudad de mexico": "Mexico City",
   "quebec city": "Quebec, QC", "tel aviv-yafo": "Tel Aviv", "tel aviv yafo": "Tel Aviv", bangalore: "Bengaluru", bombay: "Mumbai",
   "st pete": "St. Petersburg, Florida",
+  // Nicknames a tour itinerary uses (the venue matcher knows them too).
+  la: "Los Angeles, California", sf: "San Francisco, California", philly: "Philadelphia, Pennsylvania", nola: "New Orleans, Louisiana",
+  vegas: "Las Vegas, Nevada", atx: "Austin, Texas", chi: "Chicago, Illinois", kc: "Kansas City, Missouri", slc: "Salt Lake City, Utah",
+  pdx: "Portland, Oregon", mpls: "Minneapolis, Minnesota", stl: "St. Louis, Missouri",
+  // Open-Meteo has no Newcastle upon Tyne under "Newcastle, UK"; islands are toured at their main town.
+  "newcastle, uk": "Newcastle upon Tyne, England", "newcastle, england": "Newcastle upon Tyne, England",
+  oahu: "Honolulu, Hawaii", kauai: "Lihue, Hawaii", "big island": "Hilo, Hawaii", // Maui is found as the island
 };
 // Newspaper (AP) state abbreviations, dots dropped ("Paris, Tex.", "Springfield, Ill.").
 const US_AP: Record<string, string> = {
@@ -119,7 +127,7 @@ function spellings(name: string): string[] {
 }
 
 export async function cityCenter(cache: KVNamespace, budget: Budget, city: string): Promise<Place | null> {
-  const key = `city13:${city.toLowerCase()}`;
+  const key = `city14:${city.toLowerCase()}`;
   const hit = await kvGet(cache, budget, key);
   if (hit) return hit as Place;
   const typed = (ALIASES[fold(city)] ?? city).replace(/[\u2018\u2019]/g, "'");

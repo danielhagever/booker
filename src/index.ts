@@ -27,7 +27,7 @@ const failure = (e: unknown) => {
 };
 
 // Bump whenever the pipeline or the result format changes, so no one gets yesterday's logic.
-const CACHE_VERSION = 45;
+const CACHE_VERSION = 46;
 
 async function sha(s: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -72,7 +72,9 @@ async function cached<T extends { degraded: boolean }>(
 const list = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
 
 export function venueSummary(r: VenueResult): string {
-  const where = r.venue.city ? ` (${r.venue.city.split(",")[0]})` : "";
+  // "Mohawk Austin" isn't followed by "(Austin)".
+  const town = r.venue.city?.split(",")[0] ?? "";
+  const where = town && !r.venue.name.toLowerCase().includes(town.toLowerCase()) ? ` (${town})` : "";
   const fits = r.fits.slice(0, 3).map((f) => f.name);
   const parts = [fits.length ? `For ${r.venue.name}${where}, the acts that fit your crowd and size are ${list(fits)}.` : `For ${r.venue.name}${where}, Qloo found no acts in your size range.`];
   if (r.bills[0]) parts.push(`Try ${r.bills[0].headliner} with ${r.bills[0].opener} opening.`);
@@ -122,7 +124,7 @@ function caveats(r: { acts?: VenueResult["acts"]; venue?: VenueResult["venue"]; 
   const picks = [r.venue, ...(r.acts ?? []), r.artist].filter((x): x is NonNullable<typeof x> => !!x).map((p) => ({ p, what: "" }));
   const parts = [...picks, ...found.map((p) => ({ p, what: "Pitch " }))]
     .filter(({ p }) => p.match === "closest" || p.match === "ambiguous")
-    .map(({ p, what }) => `${what}"${p.input}" was matched to ${p.name} (${p.match === "closest" ? "closest Qloo match, not exactly what was typed" : "several Qloo entries share this name; the first was used"})${p.alternatives.length ? `; alternatives: ${p.alternatives.map((a) => `${a.name}${a.note ? ` (${a.note})` : ""} [id ${a.id}]`).join(", ")}` : ""}.`);
+    .map(({ p, what }) => `${what}"${p.input}" was matched to ${p.name}${p.id ? ` [id ${p.id}]` : ""} (${p.match === "closest" ? "closest Qloo match, not exactly what was typed" : "several Qloo entries match this name; the first was used"})${p.alternatives.length ? `; alternatives: ${p.alternatives.map((a) => `${a.name}${a.note ? ` (${a.note})` : ""} [id ${a.id}]`).join(", ")}` : ""}.`);
   if (r.unresolved?.length) parts.push(`Not found in Qloo: ${r.unresolved.join(", ")}.`);
   const lost = (r.inbox ?? []).filter((p) => !p.id).map((p) => p.input);
   if (lost.length) parts.push(`Pitches not found in Qloo: ${lost.join(", ")}.`);
@@ -164,7 +166,7 @@ function buildServer(env: Env, req: Request): McpServer {
     {
       title: "Find acts that fit a venue's crowd and size",
       description:
-        "For a talent buyer at a live music venue: given the venue (name and city) and acts that did well there, ranks artists whose fans overlap with those acts, sized to the room by the acts' Qloo popularity, with the city as a signal; suggests headliner + opener bills; and, if given pitches from the inbox, says which fit, which are bigger or smaller than the room, and which are off the crowd's taste. Use artists' names as Qloo knows them. If a name was only a closest match, the result lists alternatives with Qloo IDs: ask the person which one they meant, then call again with that id.",
+        "For a talent buyer at a live music venue: given the venue (name and city) and acts that did well there, ranks artists whose fans overlap with those acts, sized to the room by the acts' Qloo popularity, with the city as a signal; suggests headliner + opener bills; and, if given pitches from the inbox, says which fit, which are bigger or smaller than the room, and which are off the crowd's taste. Use artists' names as Qloo knows them. If a name was only a closest match, or several Qloo entries match it, the answer says which entry was used, with its Qloo id, and lists any alternatives with theirs: ask the person whether it's the one they meant; to use another, call again with {name, id}.",
       inputSchema: z.object({
         venue: named.describe("The venue with its city, e.g. 'The Empty Bottle, Chicago', or {name, id} from an earlier result's alternatives"),
         acts: z.array(named).min(1).max(MAX_ACTS).describe("Artists that played the venue and sold well"),
@@ -177,7 +179,7 @@ function buildServer(env: Env, req: Request): McpServer {
       try {
         return await limited(async (budget, gate) => {
           const input = venueInput(args);
-          if (input.venue.name.length < 2) throw new AppError("Name the venue and its city.", 400);
+          if (input.venue.name.length < 2 || !input.acts.length) throw new AppError("Name the venue with its city, and at least one act that did well there.", 400);
           const r = await cached(env, budget, "venue", { v: input.venue, a: input.acts, p: input.pitches, r: input.rising }, () => forVenue(env, budget, input), gate);
           const s = venueSummary(r);
           const notes = caveats(r);
@@ -193,7 +195,7 @@ function buildServer(env: Env, req: Request): McpServer {
     {
       title: "Find the cities and rooms that fit an artist",
       description:
-        "For an artist, manager or booking agent planning shows: given an artist and up to 5 cities, ranks the cities by Qloo's affinity for the artist there and lists the live music venues and concert halls in each whose visitors' taste fits the artist's fans. Cities need their state or country, e.g. 'Austin, Texas'. Qloo knows taste, not capacity or availability. If the artist was only a closest match, the result lists alternatives with Qloo IDs: ask the person which one they meant, then call again with that id.",
+        "For an artist, manager or booking agent planning shows: given an artist and up to 5 cities, ranks the cities by Qloo's affinity for the artist there and lists the live music venues and concert halls in each whose visitors' taste fits the artist's fans. Cities need their state or country, e.g. 'Austin, Texas'. Qloo knows taste, not capacity or availability. If the artist was only a closest match, or several Qloo entries match the name, the answer says which entry was used, with its Qloo id, and lists any alternatives with theirs: ask the person whether it's the one they meant; to use another, call again with {name, id}.",
       inputSchema: z.object({
         artist: named.describe("The artist, by name as Qloo knows it, or {name, id}"),
         cities: z.array(z.string().min(2).max(MAX_NAME)).min(1).max(MAX_CITIES).describe("Cities with their state or country"),
@@ -204,6 +206,7 @@ function buildServer(env: Env, req: Request): McpServer {
       try {
         return await limited(async (budget, gate) => {
           const input = artistInput(args);
+          if (input.artist.name.length < 1 || !input.cities.length) throw new AppError("Name the artist and at least one city.", 400);
           const r = await cached(env, budget, "artist", { a: input.artist, c: input.cities }, () => forArtist(env, budget, input), gate);
           const s = tourSummary(r);
           const notes = caveats(r);
@@ -220,7 +223,16 @@ function buildServer(env: Env, req: Request): McpServer {
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
-    if (url.pathname === "/mcp" || url.pathname.startsWith("/mcp/")) return createMcpHandler(() => buildServer(env, req)).fetch(req);
+    if (url.pathname === "/mcp" || url.pathname.startsWith("/mcp/")) {
+      // One tool call per HTTP request: a JSON-RPC batch of several would run them side by side, each with its own
+      // 50-subrequest budget and Qloo pacing, so together they could break both.
+      if (req.method === "POST") {
+        const body = await req.clone().json().catch(() => null);
+        if (Array.isArray(body) && body.filter((m) => m?.method === "tools/call").length > 1)
+          return json({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "Send one tool call per request." } }, 400);
+      }
+      return createMcpHandler(() => buildServer(env, req)).fetch(req);
+    }
     if (url.pathname === "/favicon.ico") return Response.redirect(new URL("/favicon.svg", url).toString(), 301);
     if (url.pathname === "/api/status") return json({ qloo: !!env.QLOO_API_KEY });
     if (url.pathname === "/api/venue" && req.method === "POST") {

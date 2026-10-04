@@ -13,10 +13,12 @@ export const validId = (id: string) => TAG_OR_ENTITY_ID.test(id);
 export const clean = (v: unknown, max = MAX_NAME): string => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 
 // A list of names: an array of strings or {name, id} objects, or one text separated by commas,
-// semicolons or new lines. A name with a comma goes in quotes: "Tyler, the Creator". Splitting never
-// happens on "and": "Simon and Garfunkel" stays one name.
+// semicolons, new lines, tabs (a pasted spreadsheet row), "|" or a spaced " / " (AC/DC stays one name). A
+// name with a comma goes in quotes: "Tyler, the Creator". Splitting never happens on "and": "Simon and
+// Garfunkel" stays one name.
 export function splitNames(text: string): string[] {
-  return parseNames(singleQuoted(text)) ?? text.split(/[,;\n]/).map((x) => x.replace(/["“”„«»]/g, ""));
+  const t = text.replace(/\t|\||\s+\/\s+/g, "\n");
+  return parseNames(singleQuoted(t)) ?? t.split(/[,;\n]/).map((x) => x.replace(/["“”„«»]/g, ""));
 }
 
 // Single quotes quote a name only when they open it, close it just before a separator, and hold a comma

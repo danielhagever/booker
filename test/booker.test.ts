@@ -1,7 +1,7 @@
 // Booker's pipelines against a mock Qloo shaped like the live API. Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { forArtist, forVenue, sizeOf, fromSize, cityOf, showRooms } from "../src/booker.ts";
+import { forArtist, forVenue, sizeOf, fromSize, cityOf, showRooms, resolveArtists } from "../src/booker.ts";
 import { resembles, nameKey, squashed, isRoom, chooseVenue, resolveArtist, resolveVenue } from "../src/resolve.ts";
 import { names, cityList } from "../src/input.ts";
 import { Budget } from "../src/limits.ts";
@@ -187,6 +187,34 @@ test("for an artist: cities by Qloo's affinity there, the rooms that fit, unknow
   }
 });
 
+test("two acts joined by & or and in a list are both used when each is an exact match", async () => {
+  const art = (id: string, name: string) => ({ id, name, types: ["urn:entity:artist"] });
+  const db: Record<string, any[]> = {
+    "Waxahatchee & Snail Mail": [art("2", "Snail Mail"), art("9", "Waxahatchee & Katie Crutchfield Live")],
+    Waxahatchee: [art("1", "Waxahatchee")],
+    "Snail Mail": [art("2", "Snail Mail")],
+    "Simon & Garfunkel": [art("3", "Simon & Garfunkel")],
+    "Wind & Fire": [art("4", "Earth, Wind & Fire")],
+    Wind: [art("5", "Wind")],
+    Fire: [art("6", "Fire")],
+  };
+  const q = { search: async (query: string) => db[query] ?? [] } as any;
+  const r = await resolveArtists(q, [{ name: "Big Thief" }, { name: "Waxahatchee & Snail Mail" }, { name: "Simon & Garfunkel" }, { name: "Wind & Fire" }]);
+  assert.deepEqual(r.found.map((x) => x.entity.name), ["Waxahatchee", "Snail Mail", "Simon & Garfunkel", "Earth, Wind & Fire"]);
+  assert.deepEqual(r.missing, ["Big Thief"]);
+});
+
+test("the same city typed twice is scored once, and the trace says so", async () => {
+  const m = mockFetch(standardQloo());
+  try {
+    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Chicago, Illinois", "chicago, illinois", "Austin, Texas"] });
+    assert.deepEqual(r.cities.map((c) => c.input).sort(), ["Austin, Texas", "Chicago, Illinois"]);
+    assert.ok(r.trace.some((t) => t.detail.includes('"chicago, illinois" is the same city as "Chicago, Illinois"')));
+  } finally {
+    m.restore();
+  }
+});
+
 test("a city Qloo reads somewhere else (over 60 km away) is left out, not scored", async () => {
   const m = mockFetch((c) => {
     if (qloo(c) && c.path === "/v2/insights" && c.params.get("filter.type") === "urn:entity:artist" && c.params.get("signal.location.query")?.startsWith("Austin"))
@@ -343,7 +371,7 @@ test("venues: the words that name the room decide, not the city, a kind of room,
   const mohawk = [place("Mohawk", "Mohawk", "New York", ["Bar"]), place("Mohawk Austin", "Austin", "Texas", ["Bar", "Live music venue"])];
   assert.equal(pick("Mohawk Austin", mohawk), "Mohawk Austin");
   assert.equal(pick("Mohawk, Austin", mohawk), "Mohawk Austin");
-  assert.equal(pick("Troubadour Los Angeles", [place("Los Angeles Theatre", "Los Angeles", "California", ["Performing arts theater"]), place("The Troubadour", "West Hollywood", "California")]), "The Troubadour (closest)", "Qloo files it in West Hollywood");
+  assert.equal(pick("Troubadour Los Angeles", [place("Los Angeles Theatre", "Los Angeles", "California", ["Performing arts theater"]), place("The Troubadour", "West Hollywood", "California")]), "The Troubadour", "Qloo files it in West Hollywood, which is in LA's area");
   assert.equal(pick("Fillmore San Francisco", [place("San Francisco Symphony", "San Francisco", "California", ["Concert hall"]), place("The Fillmore", "San Francisco", "California")]), "The Fillmore");
   assert.equal(pick("Antone's, Austin", [place("Antone's Nightclub", "Austin", "Texas")]), "Antone's Nightclub");
   assert.equal(pick("Empty Botle, Chicago", [place("The Empty Bottle", "Chicago", "Illinois")]), "The Empty Bottle (closest)");
@@ -585,6 +613,13 @@ test("a venue typed without a comma is also looked up by name alone when the cit
   const steel = { id: "2", name: "Brooklyn Steel", types: [], categories: ["Event venue", "Live music venue"], city: "New York", region: "New York", countryCode: "US" };
   const r = await resolveVenue({ search: async (q: string) => (q === "Brooklyn Steel" ? [steel] : [steak]) } as any, "Brooklyn Steel New York");
   assert.equal(`${r!.entity.name} ${r!.match}`, "Brooklyn Steel exact");
+  // ...also when nothing the first search found is a room at all (a hotel and a plain steakhouse).
+  const hotel = { id: "3", name: "Hotel Brooklyn", types: [], categories: ["Hotel"], city: "Brooklyn", region: "New York", countryCode: "US" };
+  const plain = { ...steak, categories: ["Seafood restaurant", "Steak house"] };
+  for (const typed of ["Brooklyn Steel New York", "Brooklyn Steel NYC", "Brooklyn Steel Brooklyn NY"]) {
+    const again = await resolveVenue({ search: async (q: string) => (q === "Brooklyn Steel" ? [steel] : [hotel, plain]) } as any, typed);
+    assert.equal(again?.entity.name, "Brooklyn Steel", typed);
+  }
 });
 
 test("artists: a name typed as part of a band's name stays a near match (seen live: Edward Sharpe)", async () => {
@@ -627,6 +662,13 @@ test("artists: near names are ranked by closeness, and Not it? offers only close
   assert.equal(await resolveArtist(fake(["Dex"]), "Dax"), null);
   const sun = await resolveArtist(fake(["Sun", "Suns", "The Suns of Light"]), "Sun");
   assert.deepEqual(sun!.alternatives.map((a) => a.name), [], "Not it? doesn't offer a plural of an exact name");
+  // Next to an exact match, a fragment of what was typed isn't offered (seen live in the Mohawk example).
+  for (const [typed, names, offered] of [["Shakey Graves", ["Shakey Graves", "Graves"], []], ["Parquet Courts", ["Parquet Courts", "Daniele Luppi & Parquet Courts", "Courts"], ["Daniele Luppi & Parquet Courts"]], ["Wet Leg", ["WET LEG", "W.E.T."], []]] as const) {
+    const got = await resolveArtist(fake([...names]), typed);
+    assert.deepEqual(got!.alternatives.map((a) => a.name), offered, typed);
+  }
+  const twins = await resolveArtist({ search: async () => [{ id: "a", name: "Twins", types: ["urn:entity:artist"], popularity: 0.91 }, { id: "b", name: "Twins", types: ["urn:entity:artist"], popularity: 0.42 }] } as any, "Twins");
+  assert.equal(twins!.alternatives[0].note, "popularity 0.42", "same-named acts are told apart by popularity when Qloo gives no genre");
   const kiss = await resolveArtist(fake(["Kiss", "Kisses", "The Who", "The Whos"]), "Kiss");
   assert.deepEqual(kiss!.alternatives.map((a) => a.name), []);
   // ...but for a name of two words, or when nothing matched exactly, a plural is how the intended act stays

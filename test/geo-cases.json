@@ -481,7 +481,7 @@ null
 ],
 [
 "Newcastle, UK",
-"Newcastle, Northern Ireland",
+"Newcastle upon Tyne, England",
 null
 ],
 [
@@ -1381,7 +1381,7 @@ null
 ],
 [
 "Kauai",
-"Kauaina, Papua New Guinea",
+"Lihue, Hawaii",
 null
 ],
 [
@@ -2012,6 +2012,96 @@ null
 [
 "St Jerome, QC",
 "Saint-Jérôme, Quebec",
+null
+],
+[
+"Newcastle, England",
+"Newcastle upon Tyne, England",
+null
+],
+[
+"LA",
+"Los Angeles, California",
+null
+],
+[
+"SF",
+"San Francisco, California",
+null
+],
+[
+"Philly",
+"Philadelphia, Pennsylvania",
+null
+],
+[
+"NOLA",
+"New Orleans, Louisiana",
+null
+],
+[
+"Vegas",
+"Las Vegas, Nevada",
+null
+],
+[
+"ATX",
+"Austin, Texas",
+null
+],
+[
+"KC",
+"Kansas City, Missouri",
+null
+],
+[
+"SLC",
+"Salt Lake City, Utah",
+null
+],
+[
+"PDX",
+"Portland, Oregon",
+null
+],
+[
+"Mpls",
+"Minneapolis, Minnesota",
+null
+],
+[
+"STL",
+"St Louis, Missouri",
+null
+],
+[
+"Oahu",
+"Honolulu, Hawaii",
+null
+],
+[
+"Big Island",
+"Hilo, Hawaii",
+null
+],
+[
+"Kauai, HI",
+"Lihue, Hawaii",
+null
+],
+[
+"Brooklyn, NYC",
+"Brooklyn, New York",
+null
+],
+[
+"Queens, NYC",
+"Borough of Queens, New York",
+null
+],
+[
+"LA, CA",
+"Los Angeles, California",
 null
 ]
 ]
