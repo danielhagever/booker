@@ -213,7 +213,9 @@ function toEntity(e: any): Entity {
     region: typeof geo.admin1_region === "string" ? geo.admin1_region : undefined,
     country: typeof geo.country === "string" ? geo.country : undefined,
     countryCode: typeof geo.country_code === "string" ? geo.country_code : undefined,
-    categories: [...new Set(tags.filter((t) => t.type === CATEGORY).map((t) => t.name))].slice(0, 4),
+    // All of them: the music category can come late (The O2: Outlet mall, Arena, Restaurant, Bowling alley,
+    // Movie theater, Live music venue).
+    categories: [...new Set(tags.filter((t) => t.type === CATEGORY).map((t) => t.name))],
     genres: [...new Set(tags.filter((t) => t.type === GENRE).map((t) => t.name))].slice(0, 3),
   };
 }

@@ -302,8 +302,19 @@ const isMusic = (e: Entity) => (e.categories?.length ? e.categories.some((c) => 
 // Venues: "The Empty Bottle, Chicago". The whole text goes to Qloo's place search (the city helps it);
 // chooseVenue decides exact, ambiguous or closest.
 export async function resolveVenue(q: Qloo, input: string): Promise<Resolved | null> {
-  const found = (await q.search(input.replace(/,/g, " "), "urn:entity:place", 8)).filter(isRoom);
-  const chosen = chooseVenue(input, found);
+  let found = (await q.search(input.replace(/,/g, " "), "urn:entity:place", 8)).filter(isRoom);
+  let chosen = chooseVenue(input, found);
+  // The city in the query can throw Qloo's search off ("Brooklyn Steel New York" returns hotels and a
+  // steakhouse, not Brooklyn Steel): when nothing matched by name, ask again with the name alone.
+  const name = input.split(",")[0].trim();
+  if (name !== input.trim() && (!chosen || !chosen.exact.length)) {
+    const seen = new Set(found.map((e) => e.id));
+    const more = (await q.search(name, "urn:entity:place", 8)).filter((e) => isRoom(e) && !seen.has(e.id));
+    if (more.length) {
+      found = [...found, ...more];
+      chosen = chooseVenue(input, found);
+    }
+  }
   if (!chosen) return null;
   const { pick, exact, list } = chosen;
   return {

@@ -546,3 +546,24 @@ test("rooms: places with no music category are left out, in Qloo's order; music 
   assert.deepEqual(showRooms(rooms, 2, "2").map((x) => x.name), ["Handel Hendrix House", "Institute of Contemporary Arts"], "the venue's own room stays");
   assert.deepEqual(showRooms(rooms, 12).filter(mainlyShows).map((x) => x.name), ["The Cavern Club", "Brazos Hall"], "a museum or gallery isn't named the best fit; a tourist attraction can be");
 });
+
+test("a venue Qloo's search misses with the city is looked up by name alone (seen live: Brooklyn Steel)", async () => {
+  const steak = { id: "1", name: "Brooklyn Chop House Steakhouse Downtown NYC", types: [], categories: ["Seafood restaurant", "Steak house", "Cocktail bar"], city: "New York", region: "New York", countryCode: "US" };
+  const steel = { id: "2", name: "Brooklyn Steel", types: [], categories: ["Event venue", "Live music venue"], city: "New York", region: "New York", countryCode: "US" };
+  const q = { search: async (query: string) => (query === "Brooklyn Steel" ? [steel] : [steak]) } as any;
+  const r = await resolveVenue(q, "Brooklyn Steel, New York");
+  assert.equal(`${r!.entity.name} ${r!.match}`, "Brooklyn Steel exact");
+});
+
+test("every category of a place is kept: The O2's music category comes sixth (seen live)", async () => {
+  const o2 = venue(9, "The O2", "London", "England", ["Outlet mall", "Arena", "Restaurant", "Bowling alley", "Movie theater", "Live music venue", "Event venue"]);
+  const m = mockFetch((c) => (c.host === "qloo.test" ? { body: { results: { entities: [o2] } } } : undefined));
+  try {
+    const { Qloo } = await import("../src/qloo.ts");
+    const [e] = await new Qloo(ENV(memoryKV().kv), new Budget(48)).venues(["x"], "London, England", 12);
+    assert.ok(e.categories!.includes("Live music venue"));
+    assert.equal(showRooms([e], 6).length, 1);
+  } finally {
+    m.restore();
+  }
+});

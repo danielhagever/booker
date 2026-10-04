@@ -220,3 +220,8 @@ test("the page offers Not it? whenever Qloo had other candidates, so a wrong exa
 test("the page shows how a city was read when its comma part didn't match", () => {
   assert.match(page, /c\.note \? `<div class="m" style="color:var\(--warn\)">\$\{esc\(c\.note\)\}<\/div>`/);
 });
+
+test("rooms show their categories with the music ones first, in the city cards and the rooms in town", () => {
+  assert.match(page, /const roomCats = /);
+  assert.equal(page.match(/esc\(roomCats\(r\.categories\)\)/g)?.length, 2);
+});

@@ -61,7 +61,7 @@ export interface VenueResult extends Trace {
   bills: { headliner: string; opener: string; overlap: number }[];
   inbox: Verdict[];
   roomFans: Candidate[]; // Qloo's view of the venue's own fans
-  rivals: { act: string; rooms: { name: string; affinity?: number; you: boolean }[] }; // rooms in town that fit the top act
+  rivals: { act: string; rooms: { name: string; affinity?: number; you: boolean; categories?: string[] }[] }; // rooms in town that fit the top act
 }
 
 export interface TourResult extends Trace {
@@ -153,7 +153,7 @@ const WIDEN = 0.1;
 // asked for, those are left out (never the venue's own room), and the first six are kept in Qloo's order. A
 // place that is also filed as a music room stays, whatever else it is: the Ryman is also a museum, the Cavern
 // Club a tourist attraction.
-const SHOW_CATEGORY = /\b(live music|music venue|night ?club|jazz club|concert hall|bar|pub|lounge|performing arts|auditorium|amphitheat(er|re)|stage)\b/i;
+const SHOW_CATEGORY = /\b(live music|music venue|night ?club|jazz club|concert hall|bar|pub|lounge|performing arts|auditorium|amphitheat(er|re)|arena|stage)\b/i;
 export function showRooms<T extends { id?: string; categories?: string[] }>(rooms: T[], keep: number, own?: string): T[] {
   return rooms.filter((r) => r.id === own || (r.categories ?? []).some((c) => SHOW_CATEGORY.test(c))).slice(0, keep);
 }
@@ -354,7 +354,7 @@ export async function forVenue(
     try {
       const rooms = showRooms(await q.venues([fits[0].id], city, 12), 6, v.id);
       rivals.act = fits[0].name;
-      rivals.rooms = rooms.map((r) => ({ name: r.name, ...(r.affinity !== undefined ? { affinity: r.affinity } : {}), you: r.id === v.id }));
+      rivals.rooms = rooms.map((r) => ({ name: r.name, ...(r.affinity !== undefined ? { affinity: r.affinity } : {}), you: r.id === v.id, ...(r.categories?.length ? { categories: r.categories } : {}) }));
       trace.push({ step: "Rivals", detail: `Asked Qloo which rooms in ${city} fit ${fits[0].name}'s fans${rooms.some((r) => r.id === v.id) ? "; yours is among them" : ""}` });
     } catch {
       degraded = true;
