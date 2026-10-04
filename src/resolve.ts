@@ -299,8 +299,10 @@ export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | 
   // "Killers" is ambiguous between The Killers and Killers, in Qloo's order.
   const literalKey = allWords(input).join(" ");
   const startsWithArticle = allWords(input).length > 1 && ARTICLES.has(allWords(input)[0]); // also "A. Savage"
-  // Among those, the one written the same way first ("A. Savage" is A. Savage before A Savage).
-  const literally = startsWithArticle ? found.filter((e) => allWords(e.name).join(" ") === literalKey).sort((x, y) => Number(nameKey(y.name) === nameKey(input)) - Number(nameKey(x.name) === nameKey(input))) : [];
+  // Among those, a typed initial puts the record written the same way first ("A. Savage" is A. Savage before A
+  // Savage); typed without the dot, Qloo's order stands.
+  const literally = startsWithArticle ? found.filter((e) => allWords(e.name).join(" ") === literalKey) : [];
+  if (!article(input, allWords(input))) literally.sort((x, y) => Number(nameKey(y.name) === nameKey(input)) - Number(nameKey(x.name) === nameKey(input)));
   const spaced = [...literally, ...found.filter((e) => nameKey(e.name) === nameKey(input) && !literally.includes(e))];
   const initials = (x: string) => words(x).some((w) => w.length === 1);
   const same = (e: Entity) => squashed(e.name) === squashed(input);
