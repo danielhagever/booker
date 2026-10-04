@@ -27,7 +27,7 @@ const failure = (e: unknown) => {
 };
 
 // Bump whenever the pipeline or the result format changes, so no one gets yesterday's logic.
-const CACHE_VERSION = 46;
+const CACHE_VERSION = 47;
 
 async function sha(s: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -74,7 +74,7 @@ const list = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1
 export function venueSummary(r: VenueResult): string {
   // "Mohawk Austin" isn't followed by "(Austin)".
   const town = r.venue.city?.split(",")[0] ?? "";
-  const where = town && !r.venue.name.toLowerCase().includes(town.toLowerCase()) ? ` (${town})` : "";
+  const where = town && !new RegExp(`(^|[^\\p{L}])${town.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^\\p{L}])`, "iu").test(r.venue.name) ? ` (${town})` : "";
   const fits = r.fits.slice(0, 3).map((f) => f.name);
   const parts = [fits.length ? `For ${r.venue.name}${where}, the acts that fit your crowd and size are ${list(fits)}.` : `For ${r.venue.name}${where}, Qloo found no acts in your size range.`];
   if (r.bills[0]) parts.push(`Try ${r.bills[0].headliner} with ${r.bills[0].opener} opening.`);

@@ -135,23 +135,24 @@ const CITY_ALIASES: Record<string, string[]> = {
 };
 // Cities Qloo files separately that people type as the big city next door: "Troubadour, Los Angeles" is in
 // West Hollywood, "Crystal Ballroom, Boston" in Somerville, "Cat's Cradle, Chapel Hill" in Carrboro.
+// Each with its state: Aurora, Illinois isn't Denver's Aurora, nor Hollywood, Florida LA's.
 const METRO: Record<string, string[]> = {
-  "los angeles": ["west hollywood", "hollywood", "north hollywood", "santa monica", "pasadena", "burbank", "glendale", "inglewood", "culver city", "long beach"],
-  "new york": ["brooklyn", "queens", "bronx", "manhattan", "jersey city", "hoboken", "long island city"],
-  boston: ["cambridge", "somerville", "allston", "brookline", "medford"],
-  "san francisco": ["oakland", "berkeley"],
-  minneapolis: ["saint paul", "st paul"],
-  denver: ["morrison", "englewood", "aurora", "lakewood"],
-  washington: ["arlington", "silver spring", "alexandria", "bethesda"],
-  chicago: ["evanston", "cicero", "berwyn"],
-  philadelphia: ["camden"],
-  atlanta: ["decatur"],
-  miami: ["miami beach"],
-  detroit: ["ferndale", "royal oak", "hamtramck"],
-  phoenix: ["tempe", "scottsdale", "mesa"],
-  "chapel hill": ["carrboro"],
+  "los angeles": ["west hollywood|california", "hollywood|california", "north hollywood|california", "santa monica|california", "pasadena|california", "burbank|california", "glendale|california", "inglewood|california", "culver city|california", "long beach|california"],
+  "new york": ["brooklyn|new york", "queens|new york", "bronx|new york", "manhattan|new york", "long island city|new york", "jersey city|new jersey", "hoboken|new jersey"],
+  boston: ["cambridge|massachusetts", "somerville|massachusetts", "allston|massachusetts", "brookline|massachusetts", "medford|massachusetts"],
+  "san francisco": ["oakland|california", "berkeley|california"],
+  minneapolis: ["saint paul|minnesota", "st paul|minnesota"],
+  denver: ["morrison|colorado", "englewood|colorado", "aurora|colorado", "lakewood|colorado"],
+  washington: ["arlington|virginia", "alexandria|virginia", "silver spring|maryland", "bethesda|maryland"],
+  chicago: ["evanston|illinois", "cicero|illinois", "berwyn|illinois"],
+  philadelphia: ["camden|new jersey"],
+  atlanta: ["decatur|georgia"],
+  miami: ["miami beach|florida"],
+  detroit: ["ferndale|michigan", "royal oak|michigan", "hamtramck|michigan"],
+  phoenix: ["tempe|arizona", "scottsdale|arizona", "mesa|arizona"],
+  "chapel hill": ["carrboro|north carolina"],
 };
-const NEXT_TO = new Map(Object.entries(METRO).flatMap(([core, near]) => near.map((c) => [words(c).join(" "), core] as const)));
+const NEXT_TO = new Map(Object.entries(METRO).flatMap(([core, near]) => near.map((c) => [c.split("|").map((x) => words(x).join(" ")).join("|"), core] as const)));
 // Australian states as people abbreviate them ("Corner Hotel, Melbourne VIC").
 const AU_STATES: Record<string, string> = {
   victoria: "vic", "new south wales": "nsw", queensland: "qld", "western australia": "wa", "south australia": "sa", tasmania: "tas",
@@ -187,7 +188,7 @@ function locationOf(e: Entity): { all: Set<string>; city: string[]; aliases: str
   const aliases = us ? (CITY_ALIASES[city.join(" ")] ?? []) : [];
   aliases.forEach((w) => all.add(w));
   // The big city next door, with its nicknames ("Troubadour, LA").
-  const core = us ? NEXT_TO.get(city.join(" ")) : undefined;
+  const core = us ? NEXT_TO.get(`${city.join(" ")}|${region.join(" ")}`) : undefined;
   if (core) [...words(core), ...(CITY_ALIASES[core] ?? [])].forEach((w) => all.add(w));
   if (city.length) all.add("city"); // "New York City", "Mexico City"
   return { all, city, aliases };
@@ -271,10 +272,14 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
     // The name opens what was typed and the rest names no other candidate's place: a neighborhood or a street
     // ("Mohawk, East Austin", "The Lexington, Islington", "Mohawk on Red River"). A closest match, better
     // when the rest also holds the room's own city.
+    // Not when the next typed word is a typo of how another candidate's longer name goes on ("Thalia Hal" is
+    // Thalia Hall, not the bar Thalia; "Lodge Rom" is Lodge Room, not The Lodge).
     let opens = 0;
     for (const n of named) {
       const rest = afterName(typed, n);
       if (!rest || !place(rest).length || !place(rest).every((w) => !anyPlace.has(w) || loc.all.has(w))) continue;
+      const goesOn = found.some((o) => { const w = words(o.name); return o !== e && w.length > n.length && n.every((x, i) => w[i] === x) && (w[n.length].startsWith(rest[0]) || typoDistance(rest[0], w[n.length]) <= 1); });
+      if (goesOn) continue;
       opens = Math.max(opens, place(rest).some((w) => w !== "city" && loc.all.has(w)) ? 2 : 1);
     }
     return { e, order, inCity, full, bare, bareAnywhere, elsewhere, longerOwn, longerOther, opens, closeness, resembles: wordsResemble(typedContent, near, false), music };

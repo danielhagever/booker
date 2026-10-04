@@ -258,6 +258,8 @@ test("the venue summary doesn't repeat a city that's in the venue's name", () =>
   const r: any = { venue: { name: "Mohawk Austin", city: "Austin, Texas" }, fits: [{ name: "Allah-Las" }], bills: [], inbox: [] };
   assert.match(venueSummary(r), /^For Mohawk Austin, the acts/);
   assert.match(venueSummary({ ...r, venue: { name: "The Empty Bottle", city: "Chicago, Illinois" } }), /^For The Empty Bottle \(Chicago\), the acts/);
+  assert.match(venueSummary({ ...r, venue: { name: "Adams Hall", city: "Ada, Oklahoma" } }), /^For Adams Hall \(Ada\), the acts/, "a whole word, not part of one");
+  assert.match(page, /const matchNote = \(p\) => \(!p\.id \? ""/, "a pitch not found in Qloo has no match label");
 });
 
 test("the inbox shows how each pitch was matched, and Not it? can change a pitch as well as an act", () => {

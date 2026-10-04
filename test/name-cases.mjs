@@ -1,4 +1,4 @@
-// 367 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
+// 372 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
 // the answer a reasonable person expects. Built by an independent review that ran them through ten versions
 // of the matcher; every one of these was right in at least one version, and all are right now.
 export default async function ({ place, art, runVenue, runArtist, runSplit, is, starts, eqList }) {
@@ -424,4 +424,10 @@ export default async function ({ place, art, runVenue, runArtist, runSplit, is, 
   await runSplit("Big Thief / Waxahatchee / Snail Mail", eqList("Big Thief", "Waxahatchee", "Snail Mail"));
   await runSplit("Big Thief | Waxahatchee", eqList("Big Thief", "Waxahatchee"));
   await runSplit("AC/DC, Wednesday", eqList("AC/DC", "Wednesday"));
+  // Pass 42: the big city next door counts only in its own state; a typo in the last word isn't a neighborhood.
+  await runVenue("Paramount Theatre, Denver", [P("Paramount Theatre", "Aurora", "Illinois", ["Performing arts theater"])], (o) => !o.includes("exact"), "Aurora, Illinois isn't Denver's Aurora");
+  await runVenue("Hard Rock Live, Los Angeles", [P("Hard Rock Live", "Hollywood", "Florida", ["Concert hall"])], (o) => !o.includes("exact"));
+  await runVenue("Texas Live, Washington DC", [P("Texas Live!", "Arlington", "Texas", ["Sports bar", "Live music venue"])], (o) => !o.includes("exact"));
+  await runVenue("Thalia Hal, Chicago", [P("Thalia", "Chicago", "Illinois", ["Bar"]), P("Thalia Hall", "Chicago", "Illinois", ["Live music venue"])], notExactWrong("Thalia Hall", "Chicago"));
+  await runVenue("Lodge Rom, Los Angeles", [P("The Lodge", "Los Angeles", "California", ["Bar"]), P("Lodge Room", "Los Angeles", "California", ["Live music venue"])], notExactWrong("Lodge Room", "Los Angeles"));
 }

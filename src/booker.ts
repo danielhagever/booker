@@ -7,6 +7,7 @@ import { AppError, type Budget } from "./limits.ts";
 import { Qloo, QlooError, type Entity, type QlooEnv } from "./qloo.ts";
 import { nameKey, resolveArtist, resolveChosen, resolveVenue, type Choice, type Resolved } from "./resolve.ts";
 import { cityCenter, km } from "./geo.ts";
+import { MAX_ACTS, MAX_PITCHES } from "./input.ts";
 
 export interface Named {
   name: string;
@@ -101,27 +102,29 @@ const candidate = (e: Entity): Candidate => ({
 // Errors that mean "this one name isn't in Qloo"; anything else stops the search with its real message.
 const notFound = (e: unknown) => e instanceof AppError && (e.status === 400 || e.status === 404);
 
-export async function resolveArtists(q: Qloo, names: Named[]): Promise<{ found: Resolved[]; missing: string[]; same: string[] }> {
+export async function resolveArtists(q: Qloo, names: Named[], max = 0): Promise<{ found: Resolved[]; missing: string[]; same: string[]; split: string[] }> {
   const one = (n: Named) =>
     (n.id ? resolveChosen(q, n.name, n.id) : resolveArtist(q, n.name)).catch((e) => {
       if (notFound(e)) return null;
       throw e;
     });
-  let out: { name: string; r: Resolved | null }[] = await Promise.all(names.map(async (n) => ({ name: n.name, r: await one(n) })));
+  let out: { name: string; id?: string; r: Resolved | null }[] = await Promise.all(names.map(async (n) => ({ name: n.name, id: n.id, r: await one(n) })));
   // Two acts joined in a list ("Big Thief, Waxahatchee & Snail Mail"): when the joined name isn't an exact
   // match, or matched only one of the two, and each part is an exact match on its own, both are used. At most
-  // twice per search, for the call budget; "Simon & Garfunkel" and "Earth, Wind & Fire" stay one act.
-  let splits = 0;
-  for (let i = 0; i < out.length && splits < 2; i++) {
-    const { name, r } = out[i];
+  // twice per search, for the call budget, and never past `max` names (0: never, as for the one artist of a
+  // tour); "Simon & Garfunkel" and "Earth, Wind & Fire" stay one act.
+  const split: string[] = [];
+  for (let i = 0; i < out.length && split.length < 2 && out.length < max; i++) {
+    const { name, id, r } = out[i];
     const join = [...name.matchAll(/\s+(?:&|and|\+)\s+/gi)].pop();
-    if (names[i]?.id || !join || r?.match === "exact") continue;
+    if (id || !join || r?.match === "exact") continue;
     const parts = [name.slice(0, join.index), name.slice(join.index! + join[0].length)].map((x) => x.trim());
     if (parts.some((x) => x.length < 2)) continue;
-    splits++;
     const both = await Promise.all(parts.map((x) => one({ name: x })));
-    if (both.every((b) => b?.match === "exact") && (!r || both.some((b) => b!.entity.id === r.entity.id)))
+    if (both.every((b) => b?.match === "exact") && (!r || both.some((b) => b!.entity.id === r.entity.id))) {
       out = [...out.slice(0, i), ...both.map((b, k) => ({ name: parts[k], r: b })), ...out.slice(i + 1)];
+      split.push(name);
+    }
   }
   const found: Resolved[] = [];
   const missing: string[] = [];
@@ -131,8 +134,9 @@ export async function resolveArtists(q: Qloo, names: Named[]): Promise<{ found: 
     else if (found.some((f) => f.entity.id === r.entity.id)) same.push(nameKey(name) === nameKey(r.entity.name) ? r.entity.name : `${name} (${r.entity.name})`);
     else found.push(r);
   }
-  return { found, missing, same };
+  return { found, missing, same, split };
 }
+const readAsTwo = (split: string[]) => (split.length ? `; read as two acts: ${split.join(", ")}` : "");
 const twice = (same: string[]) => (same.length ? `; the same act named twice: ${same.join(", ")}` : "");
 
 // The city Qloo is asked about, spelled out the way it resolves (measured: "Chicago, Illinois",
@@ -200,7 +204,7 @@ export async function forVenue(
       if (notFound(e)) return null;
       throw e;
     }),
-    resolveArtists(q, input.acts),
+    resolveArtists(q, input.acts, MAX_ACTS),
   ]);
   if (!venueR) throw new AppError(`I couldn't find "${input.venue.name}" among Qloo's music venues. Try its name and city, like "The Empty Bottle, Chicago".`, 404);
   const v = venueR.entity;
@@ -211,7 +215,7 @@ export async function forVenue(
   const actIds = acts.map((a) => a.entity.id);
   trace.push({
     step: "Your acts",
-    detail: `${acts.length} of ${input.acts.length} matched in Qloo${actsR.missing.length ? `; not found: ${actsR.missing.join(", ")}` : ""}${twice(actsR.same)}`,
+    detail: `${acts.length} of ${input.acts.length + actsR.split.length} matched in Qloo${actsR.missing.length ? `; not found: ${actsR.missing.join(", ")}` : ""}${twice(actsR.same)}${readAsTwo(actsR.split)}`,
   });
 
   // 2. Size: the popularity range of the acts that did well here (Booker's rule). A room's crowd is
@@ -315,7 +319,7 @@ export async function forVenue(
   // 6. The inbox: acts that pitched you, scored against the same crowd and size.
   const inbox: Verdict[] = [];
   if (input.pitches.length) {
-    const p = await resolveArtists(q, input.pitches);
+    const p = await resolveArtists(q, input.pitches, MAX_PITCHES);
     // Scored by taste alone: with the city as a signal Qloo leaves some artists out (measured). Three of
     // Qloo's own picks for this crowd are scored in the same call as a yardstick.
     // When a top pick is itself a pitch, the next pick stands in (the openers if no fit is left); with no
@@ -359,7 +363,7 @@ export async function forVenue(
     for (const m of p.missing) inbox.push({ input: m, name: m, id: "", match: "closest", alternatives: [], verdict: "unscored", why: "Not found in Qloo" });
     trace.push({
       step: "Inbox",
-      detail: `Scored ${p.found.length} pitches against your acts, ${floor === undefined ? "with none of Qloo's picks to compare with (taste not judged)" : `next to ${refAff.length} of Qloo's picks as a yardstick (taste floor ${fmt(floor)})`}${p.missing.length ? `; not found: ${p.missing.join(", ")}` : ""}${twice(p.same)}`,
+      detail: `Scored ${p.found.length} pitches against your acts, ${floor === undefined ? "with none of Qloo's picks to compare with (taste not judged)" : `next to ${refAff.length} of Qloo's picks as a yardstick (taste floor ${fmt(floor)})`}${p.missing.length ? `; not found: ${p.missing.join(", ")}` : ""}${twice(p.same)}${readAsTwo(p.split)}`,
     });
   }
 

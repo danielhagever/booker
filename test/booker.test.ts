@@ -199,9 +199,31 @@ test("two acts joined by & or and in a list are both used when each is an exact 
     Fire: [art("6", "Fire")],
   };
   const q = { search: async (query: string) => db[query] ?? [] } as any;
-  const r = await resolveArtists(q, [{ name: "Big Thief" }, { name: "Waxahatchee & Snail Mail" }, { name: "Simon & Garfunkel" }, { name: "Wind & Fire" }]);
+  const r = await resolveArtists(q, [{ name: "Big Thief" }, { name: "Waxahatchee & Snail Mail" }, { name: "Simon & Garfunkel" }, { name: "Wind & Fire" }], 8);
   assert.deepEqual(r.found.map((x) => x.entity.name), ["Waxahatchee", "Snail Mail", "Simon & Garfunkel", "Earth, Wind & Fire"]);
   assert.deepEqual(r.missing, ["Big Thief"]);
+  assert.deepEqual(r.split, ["Waxahatchee & Snail Mail"]);
+  // Each entry keeps its own chosen id after an earlier split, and a chosen entry is never split.
+  db["Lucy Dacus & Julien Baker"] = [art("7", "Lucy Dacus")];
+  db["Lucy Dacus"] = [art("7", "Lucy Dacus")];
+  db["Julien Baker"] = [art("8", "Julien Baker")];
+  const byIds = async (ids: string[]) => ids.map((id) => art(id, id === "7" ? "Lucy Dacus" : "Snail Mail"));
+  const q2 = { ...q, byIds } as any;
+  const again = await resolveArtists(q2, [{ name: "Waxahatchee & Snail Mail" }, { name: "Lucy Dacus & Julien Baker" }, { name: "Snail Male", id: "2" }], 8);
+  assert.deepEqual(again.found.map((x) => `${x.entity.name} ${x.match}`), ["Waxahatchee exact", "Snail Mail exact", "Lucy Dacus exact", "Julien Baker exact"]);
+  assert.deepEqual(again.same, ["Snail Male (Snail Mail)"]);
+  const chosen = await resolveArtists(q2, [{ name: "Waxahatchee & Snail Mail" }, { name: "Lucy Dacus & Julien Baker", id: "7" }], 8);
+  assert.deepEqual(chosen.found.map((x) => `${x.entity.name} ${x.match}`), ["Waxahatchee exact", "Snail Mail exact", "Lucy Dacus chosen"]);
+  // Never past the most names a search takes, and never for the one artist of a tour.
+  assert.deepEqual((await resolveArtists(q, [{ name: "Waxahatchee & Snail Mail" }], 1)).found.map((x) => x.entity.name), ["Snail Mail"]);
+  assert.deepEqual((await resolveArtists(q, [{ name: "Waxahatchee & Snail Mail" }])).found.map((x) => x.entity.name), ["Snail Mail"]);
+});
+
+test("a list with two acts joined says so, and counts them as two", async () => {
+  const { r } = await run({ acts: [{ name: "Wednesday & Hovvdy" }, { name: "Snail Mail" }] });
+  assert.deepEqual(r.acts.map((a) => a.name), ["Wednesday", "Hovvdy", "Snail Mail"]);
+  const acts = r.trace.find((t) => t.step === "Your acts")!.detail;
+  assert.match(acts, /^3 of 3 matched in Qloo; read as two acts: Wednesday & Hovvdy$/);
 });
 
 test("the same city typed twice is scored once, and the trace says so", async () => {
