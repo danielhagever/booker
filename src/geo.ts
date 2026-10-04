@@ -119,7 +119,7 @@ function spellings(name: string): string[] {
 }
 
 export async function cityCenter(cache: KVNamespace, budget: Budget, city: string): Promise<Place | null> {
-  const key = `city11:${city.toLowerCase()}`;
+  const key = `city13:${city.toLowerCase()}`;
   const hit = await kvGet(cache, budget, key);
   if (hit) return hit as Place;
   const typed = (ALIASES[fold(city)] ?? city).replace(/[\u2018\u2019]/g, "'");
@@ -165,9 +165,13 @@ export async function cityCenter(cache: KVNamespace, budget: Budget, city: strin
   for (const [i, n] of spellings(name).entries()) {
     const found = i === 0 && whole ? whole : await geocode(budget, n, "en");
     if (i === 0) exactTyped = found.some((r) => canon(r.name) === canon(n));
-    // A longer name only as the same word going on ("St. Pete" -> "St. Petersburg"), not as more words
-    // ("St. Denis" isn't the village Saint-Denis-sur-Coise).
-    const longer = (r: any) => canon(r.name).startsWith(canon(n)) && /^[a-z]/.test(canon(r.name).slice(canon(n).length));
+    // A longer name counts ("St. Pete" -> St. Petersburg, "St. Simons" -> Saint Simons Island, "Ft. Walton" ->
+    // Fort Walton Beach), except a French village name that goes on with a connector ("St. Denis" isn't
+    // Saint-Denis-sur-Coise, "St Malo" isn't Saint-Malo-en-Donziois).
+    const longer = (r: any) => {
+      const more = canon(r.name).startsWith(canon(n)) ? canon(r.name).slice(canon(n).length) : null;
+      return more !== null && !/^ (sur|sous|en|de|des|du|la|le|les|aux|et|d|l)( |$)/.test(more);
+    };
     const keep = (r: any) => i === 0 || canon(r.name) === canon(n) || (!exactTyped && longer(r));
     for (const r of found) if (keep(r) && !seen.has(idOf(r))) (seen.add(idOf(r)), list.push(r));
   }
@@ -178,7 +182,6 @@ export async function cityCenter(cache: KVNamespace, budget: Budget, city: strin
     const native = (await geocode(budget, name, script)).sort((a, b) => (b.population ?? 0) - (a.population ?? 0))[0];
     if (native?.id) list = await byId(budget, native.id);
   }
-  if (!list.length) return null;
   // A part fits by name (a state, province or country, or their codes) or, failing that, as an ISO
   // country code; a state wins over a country code ("Richmond, CA" is California, not Canada).
   const byName = (r: any, part: string) => {
@@ -186,6 +189,14 @@ export async function cityCenter(cache: KVNamespace, budget: Budget, city: strin
     return regionNames(part).some((n) => own.some((v) => v === n || (n.length > 3 && v.includes(n)))) || COUNTRY_WORDS[part] === fold(r.country_code);
   };
   const byCode = (r: any, part: string) => byName(r, part) || (part.length === 2 && part === fold(r.country_code));
+  // French saints are filed with hyphens ("Saint-Étienne", "Saint-Malo"): asked for only when no spelling found
+  // a place of exactly the typed name that fits what came after the comma.
+  const saint = name.match(/^(st|saint)\.?\s+(.+)$/i);
+  if (saint && !list.some((r) => canon(r.name) === canon(name) && parts.every((p) => byCode(r, p)))) {
+    const hyphen = `Saint-${saint[2].trim().replace(/\s+/g, "-")}`;
+    for (const r of await geocode(budget, hyphen, "en")) if (canon(r.name) === canon(hyphen) && !seen.has(idOf(r))) (seen.add(idOf(r)), list.push(r));
+  }
+  if (!list.length) return null;
   const named = parts.length ? list.filter((r) => parts.every((p) => byName(r, p))) : [];
   const matches = named.length ? named : parts.length ? list.filter((r) => parts.every((p) => byCode(r, p))) : [];
   const pool = matches.length ? matches : list;
