@@ -1,4 +1,4 @@
-// 312 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
+// 324 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
 // the answer a reasonable person expects. Built by an independent review that ran them through ten versions
 // of the matcher; every one of these was right in at least one version, and all are right now.
 export default async function ({ place, art, runVenue, runArtist, runSplit, is, starts, eqList }) {
@@ -265,6 +265,19 @@ export default async function ({ place, art, runVenue, runArtist, runSplit, is, 
   await runArtist("Matchbox 20", A(["Matchbox Romance", "Matchbox Twenty"], "Rock"), aIs("Matchbox Twenty", "closest"));
   await runArtist("Three Doors Down", A(["3 Doors Down", "Doors"], "Rock"), aIs("3 Doors Down", "closest"));
   await runArtist("Chapter 4", A(["Chapter 8", "Chapter IV"]), (o) => !o.startsWith("Chapter 8"), "a different number isn't a typo");
+  // Pass 34 (2026-10-04)
+  await runArtist("A. R. Rahman", A(["A.R. Rahman", "Rahman", "Sajid Rahman"], "Soundtrack"), aIs("A.R. Rahman", "exact"));
+  await runArtist("A.G. Cook", A(["A. G. Cook", "Sam Cooke", "Cook"]), aIs("A. G. Cook", "exact"));
+  await runArtist("AG Cook", A(["A. G. Cook", "Sam Cooke", "Cook"]), aIs("A. G. Cook", "exact", "closest"));
+  await runArtist("A. A. Bondy", A(["A.A. Bondy", "Bondy", "Bondi"]), aIs("A.A. Bondy", "exact"));
+  await runArtist("A G Cook", A(["A. G. Cook", "Sam Cooke", "Cook"]), aIs("A. G. Cook", "exact"));
+  await runArtist("A. Savage", A(["Savage", "A. Savage"]), aIs("A. Savage", "exact"), "with a dot, A is an initial");
+  await runArtist("Tribe Called Quest", A(["A Tribe Called Quest"], "Hip hop"), aIs("A Tribe Called Quest", "exact"));
+  await runArtist("The Hip", A(["The Tragically Hip", "The Hip Abduction", "Hip Hatchet", "Hippo Campus"], "Rock"), aIs("The Tragically Hip", "closest"));
+  await runArtist("The Stones", A(["The Rolling Stones", "The Stones Experience", "The Stone Roses"], "Rock"), aIs("The Rolling Stones", "closest"));
+  await runArtist("The Stones", A(["The Stone Roses", "The Rolling Stones"], "Rock"), aIs("The Rolling Stones", "closest"));
+  await runArtist("Joey Badass", A(["Joey Bada$$"], "Hip hop"), aIs("Joey Bada$$", "exact"));
+  await runArtist("Go Go 7188", A(["GO!GO!7188"], "Rock"), aIs("GO!GO!7188", "exact"));
   await runArtist("Bea", A(["Beach House"]), is("none"));
   await runArtist("Tyler the Creator", A(["Tyler, The Creator", "Tyler Childers"]), aIs("Tyler, The Creator", "exact"));
   await runArtist("Simon and Garfunkel", A(["Simon & Garfunkel"]), aIs("Simon & Garfunkel", "exact"));

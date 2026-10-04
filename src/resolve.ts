@@ -27,23 +27,26 @@ const FOLD: Record<string, string> = { "\u00f8": "o", "\u00e6": "ae", "\u0153": 
 // Accents are folded ("Beyonce" is Beyoncé); apostrophes, colons and dots join ("Cat's" is "Cats", "9:30"
 // is "930"); other punctuation separates words.
 const SPELLING: Record<string, string> = { theater: "theatre", amphitheater: "amphitheatre", centre: "center" };
-// Letters written as signs read as letters: P!nk is Pink, Ke$ha is Kesha, $uicideboy$ is Suicideboys.
+// Letters written as signs read as letters: P!nk is Pink (between consonants only: GO!GO!7188 is "go go"),
+// Ke$ha is Kesha, Joey Bada$$ is Badass, $uicideboy$ is Suicideboys.
 const allWords = (s: string) =>
   normalizeName(s)
     .normalize("NFKD")
     .replace(/\p{M}/gu, "")
     .replace(/[\u00f8\u00e6\u0153\u00df\u0142\u0111\u00fe]/g, (c) => FOLD[c])
-    .replace(/(?<=\p{L})!(?=\p{L})/gu, "i")
-    .replace(/\$(?=\p{L})|(?<=\p{L})\$/gu, "s")
+    .replace(/(?<=[b-df-hj-np-tv-z])!(?=[b-df-hj-np-tv-z])/g, "i")
+    .replace(/\$+(?=\p{L})|(?<=\p{L})\$+/gu, (m) => "s".repeat(m.length))
     .replace(/[&+]/g, " and ") // "Florence + the Machine", "Simon & Garfunkel"
     .replace(/['\u2018\u2019`:.]/g, "")
     .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .split(/\s+/)
     .filter(Boolean)
     .map((w) => SPELLING[w] ?? w);
+// "A" before an initial is an initial too: "A. R. Rahman", "A G Cook".
+const article = (s: string, ws: string[]) => ws.length > 1 && ARTICLES.has(ws[0]) && !(ws[0] === "a" && (/^\s*a\./i.test(s) || ws[1].length === 1));
 const words = (s: string) => {
   const ws = allWords(s);
-  return ws.length > 1 && ARTICLES.has(ws[0]) ? ws.slice(1) : ws;
+  return article(s, ws) ? ws.slice(1) : ws;
 };
 // "The Empty Bottle" and "Empty Bottle" are the same name; so are "Snail Mail" and "snail mail".
 export const nameKey = (s: string) => words(s).join(" ");
@@ -77,12 +80,14 @@ const TWINS = [["1", "one"], ["2", "ii", "two"], ["3", "iii", "three"], ["4", "i
 const TWIN = new Map(TWINS.flatMap((g, i) => g.map((w) => [w, i] as const)));
 const twins = (a: string, b: string) => TWIN.has(a) && TWIN.get(a) === TWIN.get(b);
 const plural = (a: string, b: string) => b === `${a}s` || b === `${a}es` || a === `${b}s` || a === `${b}es`;
-const closeTo = (w: string, b: string[]) => b.some((x) => x === w || twins(w, x) || plural(w, x) || typoDistance(w, x) <= (w.length > 5 ? 2 : w.length > 3 ? 1 : 0));
-// The share of a's words, small words aside, that are close to some word of b.
+const closeTo = (w: string, b: string[], plurals = true) => b.some((x) => x === w || twins(w, x) || (plurals && plural(w, x)) || typoDistance(w, x) <= (w.length > 5 ? 2 : w.length > 3 ? 1 : 0));
+// The share of a's words, small words aside, that are close to some word of b. Plurals count only between
+// names of two words or more: "Fleet Fox" is close to Fleet Foxes, but "Boy" isn't to Boys Noize.
 function share(a: string[], b: string[]): number {
   const keep = (ws: string[]) => (ws.some((w) => !SMALL.has(w)) ? ws.filter((w) => !SMALL.has(w)) : ws);
   const ca = keep(a), cb = keep(b);
-  return ca.length ? ca.filter((w) => closeTo(w, cb)).length / ca.length : 0;
+  const plurals = ca.length > 1 && cb.length > 1;
+  return ca.length ? ca.filter((w) => closeTo(w, cb, plurals)).length / ca.length : 0;
 }
 
 function wordsResemble(a: string[], b: string[], half: boolean): boolean {
@@ -301,9 +306,13 @@ export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | 
   // not Tom Waits). "Not it?" offers only names closer than that: most of what was typed ("Big Thief" isn't
   // offered Big Sean; "Horse Jumper of Love" isn't offered Love of Lesbian).
   const typedWords = words(input);
-  // Typed with its article, the name must hold the article too ("The Weekend" isn't inside Vampire Weekend).
+  // Typed with its article, the name must hold the article too, in place or leading the name ("The Weekend"
+  // isn't inside Vampire Weekend; "The Hip" is inside The Tragically Hip).
   const typedAll = allWords(input).join(" ");
-  const inside = (e: Entity) => ` ${allWords(e.name).join(" ")} `.includes(` ${typedAll} `);
+  const typedArticle = article(input, allWords(input)) ? allWords(input)[0] : "";
+  const inside = (e: Entity) =>
+    ` ${allWords(e.name).join(" ")} `.includes(` ${typedAll} `) ||
+    ((!typedArticle || allWords(e.name)[0] === typedArticle) && ` ${words(e.name).join(" ")} `.includes(` ${typedWords.join(" ")} `));
   const part = (e: Entity) => { const n = words(e.name); return ` ${typedWords.join(" ")} `.includes(` ${n.join(" ")} `) && n.length * 2 >= typedWords.length; };
   const sure = (e: Entity) => exact.includes(e) || same(e) || inside(e) || part(e);
   // Near names rank in three tiers. A name holding everything typed comes first ("Mavis" is Mavis Staples,
