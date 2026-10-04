@@ -214,6 +214,11 @@ test("two acts joined by & or and in a list are both used when each is an exact 
   assert.deepEqual(again.same, ["Snail Male (Snail Mail)"]);
   const chosen = await resolveArtists(q2, [{ name: "Waxahatchee & Snail Mail" }, { name: "Lucy Dacus & Julien Baker", id: "7" }], 8);
   assert.deepEqual(chosen.found.map((x) => `${x.entity.name} ${x.match}`), ["Waxahatchee exact", "Snail Mail exact", "Lucy Dacus chosen"]);
+  // At most two tries per search, for the call budget, even when every try fails.
+  let searches = 0;
+  const counted = { search: async (query: string) => (searches++, db[query] ?? []) } as any;
+  await resolveArtists(counted, ["Mumford & Son", "Hall & Oate", "Simon & Garfunkle", "Hootie & the Blowfis"].map((name) => ({ name })), 8);
+  assert.equal(searches, 4 + 2 * 2);
   // Never past the most names a search takes, and never for the one artist of a tour.
   assert.deepEqual((await resolveArtists(q, [{ name: "Waxahatchee & Snail Mail" }], 1)).found.map((x) => x.entity.name), ["Snail Mail"]);
   assert.deepEqual((await resolveArtists(q, [{ name: "Waxahatchee & Snail Mail" }])).found.map((x) => x.entity.name), ["Snail Mail"]);

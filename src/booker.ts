@@ -114,12 +114,14 @@ export async function resolveArtists(q: Qloo, names: Named[], max = 0): Promise<
   // twice per search, for the call budget, and never past `max` names (0: never, as for the one artist of a
   // tour); "Simon & Garfunkel" and "Earth, Wind & Fire" stay one act.
   const split: string[] = [];
-  for (let i = 0; i < out.length && split.length < 2 && out.length < max; i++) {
+  let tries = 0;
+  for (let i = 0; i < out.length && tries < 2 && out.length < max; i++) {
     const { name, id, r } = out[i];
     const join = [...name.matchAll(/\s+(?:&|and|\+)\s+/gi)].pop();
     if (id || !join || r?.match === "exact") continue;
     const parts = [name.slice(0, join.index), name.slice(join.index! + join[0].length)].map((x) => x.trim());
     if (parts.some((x) => x.length < 2)) continue;
+    tries++;
     const both = await Promise.all(parts.map((x) => one({ name: x })));
     if (both.every((b) => b?.match === "exact") && (!r || both.some((b) => b!.entity.id === r.entity.id))) {
       out = [...out.slice(0, i), ...both.map((b, k) => ({ name: parts[k], r: b })), ...out.slice(i + 1)];

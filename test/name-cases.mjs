@@ -1,4 +1,4 @@
-// 372 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
+// 374 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
 // the answer a reasonable person expects. Built by an independent review that ran them through ten versions
 // of the matcher; every one of these was right in at least one version, and all are right now.
 export default async function ({ place, art, runVenue, runArtist, runSplit, is, starts, eqList }) {
@@ -430,4 +430,8 @@ export default async function ({ place, art, runVenue, runArtist, runSplit, is, 
   await runVenue("Texas Live, Washington DC", [P("Texas Live!", "Arlington", "Texas", ["Sports bar", "Live music venue"])], (o) => !o.includes("exact"));
   await runVenue("Thalia Hal, Chicago", [P("Thalia", "Chicago", "Illinois", ["Bar"]), P("Thalia Hall", "Chicago", "Illinois", ["Live music venue"])], notExactWrong("Thalia Hall", "Chicago"));
   await runVenue("Lodge Rom, Los Angeles", [P("The Lodge", "Los Angeles", "California", ["Bar"]), P("Lodge Room", "Los Angeles", "California", ["Live music venue"])], notExactWrong("Lodge Room", "Los Angeles"));
+  // Pass 43: a street after "on" isn't a typo of "of".
+  const mh = () => [P("Music Hall of Williamsburg", "Brooklyn", "New York"), P("The Music Hall", "Portsmouth", "New Hampshire", ["Concert hall"])];
+  await runVenue("The Music Hall on Chestnut, Portsmouth", mh(), notExactWrong("The Music Hall", "Portsmouth"));
+  await runVenue("Music Hall on Chestnut Street", mh(), notExactWrong("The Music Hall", "Portsmouth"));
 }

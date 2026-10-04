@@ -69,7 +69,7 @@ const ALIASES: Record<string, string> = {
   vegas: "Las Vegas, Nevada", atx: "Austin, Texas", chi: "Chicago, Illinois", kc: "Kansas City, Missouri", slc: "Salt Lake City, Utah",
   pdx: "Portland, Oregon", mpls: "Minneapolis, Minnesota", stl: "St. Louis, Missouri",
   // Open-Meteo has no Newcastle upon Tyne under "Newcastle, UK"; islands are toured at their main town.
-  ...Object.fromEntries(["newcastle, uk", "newcastle uk", "newcastle, england", "newcastle england", "newcastle, united kingdom", "newcastle united kingdom"].map((k) => [k, "Newcastle upon Tyne, England"])),
+  ...Object.fromEntries(["uk", "gb", "england", "united kingdom", "great britain", "britain"].flatMap((r) => [`newcastle, ${r}`, `newcastle ${r}`]).map((k) => [k, "Newcastle upon Tyne, England"])),
   oahu: "Honolulu, Hawaii", kauai: "Lihue, Hawaii", "big island": "Hilo, Hawaii", // Maui is found as the island
 };
 // Newspaper (AP) state abbreviations, dots dropped ("Paris, Tex.", "Springfield, Ill.").
@@ -127,10 +127,11 @@ function spellings(name: string): string[] {
 }
 
 export async function cityCenter(cache: KVNamespace, budget: Budget, city: string): Promise<Place | null> {
-  const key = `city15:${city.toLowerCase()}`;
+  const key = `city16:${city.toLowerCase()}`;
   const hit = await kvGet(cache, budget, key);
   if (hit) return hit as Place;
-  const typed = (ALIASES[fold(city)] ?? city).replace(/[\u2018\u2019]/g, "'");
+  // "Newcastle,UK" and "Newcastle , UK" are "Newcastle, UK".
+  const typed = (ALIASES[fold(city).replace(/\s*,\s*/g, ", ")] ?? city).replace(/[\u2018\u2019]/g, "'");
   let [name, ...rest] = typed.split(",").map((x) => x.trim());
   if (!name) return null;
   // A nickname before the comma too: "Quebec City, QC", "Bangalore, India", "Washington DC, USA" (and, below,
