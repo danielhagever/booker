@@ -543,10 +543,10 @@ test("rooms: a place mainly used as a museum, gallery or flea market is left out
     r("8", "The O2", "Outlet mall", "Arena", "Restaurant", "Bowling alley", "Movie theater", "Live music venue"),
     r("9", "Westbeth Artists Housing", "Art center", "Live music venue", "Arts organization", "Art gallery"),
     r("10", "Barbican Centre", "Exhibition and trade center", "Exhibition and trade centre", "Conference center", "Event venue", "Cinema", "Library", "Restaurant", "Cafe", "Bar", "Art gallery", "Performing arts theater"),
-    r("11", "Shuga Records", "Clothing store", "Electronics store", "Record store", "Live music venue"),
-    r("12", "Third Man Records", "Record store", "Live music venue"),
+    r("11", "McCabe's Guitar Shop", "Guitar store", "Musical instrument store", "Musical instrument rental service", "Concert hall"),
+    r("12", "The Museum Club", "Bar", "Live music venue"),
   ];
-  assert.deepEqual(showRooms(rooms, 12).map((x) => x.name), ["Ryman Auditorium", "The Cavern Club", "The Old Bar", "The O2", "Barbican Centre", "Third Man Records"]);
+  assert.deepEqual(showRooms(rooms, 12).map((x) => x.name), ["Ryman Auditorium", "The Cavern Club", "The Old Bar", "The O2", "Barbican Centre", "McCabe's Guitar Shop", "The Museum Club"]);
   assert.deepEqual(showRooms(rooms, 2, "1").map((x) => x.name), ["Handel Hendrix House", "Ryman Auditorium"], "the venue's own room stays");
 });
 
@@ -598,4 +598,10 @@ test("artists: near names are ranked by closeness, and Not it? offers only close
   assert.deepEqual(big!.alternatives, []);
   const hjol = await resolveArtist(fake(["Horse Jumper of Love", "Love of Lesbian", "Book Of Love"]), "Horse Jumper of Love");
   assert.deepEqual(hjol!.alternatives, []);
+  const hank = await resolveArtist(fake(["Hank Williams", "Hank Williams III"]), "Hank Williams 3");
+  assert.equal(`${hank!.entity.name} ${hank!.match}`, "Hank Williams III exact");
+  const dls = await resolveArtist(fake(["De La Soul"]), "De La Sol");
+  assert.equal(`${dls!.entity.name} ${dls!.match}`, "De La Soul closest");
+  const sol = await resolveArtist(fake(["De La Soul", "Sol Seppy"]), "Sol");
+  assert.equal(sol!.entity.name, "Sol Seppy", "a name holding the typed word beats one close only by spelling");
 });
