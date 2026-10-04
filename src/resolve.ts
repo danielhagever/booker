@@ -206,7 +206,11 @@ const PLACE_ABBR: Record<string, string[]> = {
   n: ["north", "northern"], no: ["north"], s: ["south", "southern"], so: ["south"], e: ["east", "eastern"], w: ["west", "western"],
   mt: ["mount"], ft: ["fort"], st: ["saint"], ste: ["sainte"],
 };
-const fillerAt = (rest: string[], i: number) => /^\d{5}(\d{4})?$/.test(rest[i]) || ((rest[i] === "in" || rest[i] === "at" || rest[i] === "the") && i < rest.length - 1);
+// "IN" before a zip code or a country is Indiana ("Broad Ripple, IN 46220, USA").
+const ZIP = /^\d{5}(\d{4})?$/;
+const COUNTRY_AFTER = new Set(["us", "usa", "united", "america", "canada", "uk", "gb"]);
+const fillerAt = (rest: string[], i: number) =>
+  ZIP.test(rest[i]) || ((rest[i] === "in" || rest[i] === "at" || rest[i] === "the") && i < rest.length - 1 && !ZIP.test(rest[i + 1]) && !COUNTRY_AFTER.has(rest[i + 1]));
 
 // The rest of the typed words after the candidate's name, if its name opens them (compared without spaces).
 function afterName(typed: string[], name: string[]): string[] | null {
@@ -223,12 +227,13 @@ function afterName(typed: string[], name: string[]): string[] | null {
 
 export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exact: Entity[]; list: Entity[] } | null {
   const typed = words(input);
-  // Where the typed words were separated by a comma: a place's words never span one ("Fuller St, Helena").
+  // Where the typed words were separated by a comma (a full-width one too): a place's words never span one
+  // ("Fuller St, Helena"). New lines never get here: the input is cleaned to single spaces first.
   const BREAK = "zqxbreakzq";
   const commaAt = new Set<number>();
   {
     let k = 0;
-    const marked = words(input.normalize("NFKC").replace(/[,\n]/g, ` ${BREAK} `));
+    const marked = words(input.normalize("NFKC").replace(/,/g, ` ${BREAK} `));
     for (const w of marked) w === BREAK ? commaAt.add(k) : k++;
     if (k !== typed.length) commaAt.clear();
   }
@@ -335,7 +340,7 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
       // Saint Helena).
       const base = typed.length - rest.length;
       const typedIn = (ph: string[]) =>
-        rest.some((_, j) => ph.every((w, m) => { const t = rest[j + m]; return t !== undefined && !fillerAt(rest, j + m) && (t === w || PLACE_ABBR[t]?.includes(w)) && (m === 0 || !commaAt.has(base + j + m)); }));
+        rest.some((_, j) => ph.every((w, m) => { const t = rest[j + m]; return t !== undefined && (!fillerAt(rest, j + m) || (ph.length > 1 && t === w)) && (t === w || PLACE_ABBR[t]?.includes(w)) && (m === 0 || !commaAt.has(base + j + m)); }));
       // How far a typed word is from the room's place. Its own city (words of four letters or more): 1 when cut off
       // ("Phila", "ATL", "Det", also before a neighborhood) or one letter off in a word of four letters or more
       // ("Pual", "Rneo"; "End" isn't Bend). Its other place words of four letters or more: its state, the big city
