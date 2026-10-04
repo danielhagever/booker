@@ -2,7 +2,7 @@
 
 **Book the acts your room's crowd already loves.** Taste-matched booking for independent live music venues and the artists who play them, grounded in [Qloo](https://www.qloo.com/)'s taste graph.
 
-Live app: https://booker.meshulam791.workers.dev · MCP endpoint for agents: `https://booker.meshulam791.workers.dev/mcp`
+Live app: https://booker.meshulam791.workers.dev · MCP endpoint for agents: `https://booker.meshulam791.workers.dev/mcp` · Demo video (2:45): https://youtu.be/IChliKFsEto
 
 ## The problem
 
