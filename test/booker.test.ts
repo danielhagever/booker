@@ -542,8 +542,9 @@ test("rooms: a place mainly used as a museum, gallery or flea market is left out
     r("7", "Melrose Trading Post", "Record store", "Thrift store", "Flea market", "Arts organization", "Live music venue"),
     r("8", "The O2", "Outlet mall", "Arena", "Restaurant", "Bowling alley", "Movie theater", "Live music venue"),
     r("9", "Westbeth Artists Housing", "Art center", "Live music venue", "Arts organization", "Art gallery"),
+    r("10", "Barbican Centre", "Exhibition and trade center", "Exhibition and trade centre", "Conference center", "Event venue", "Cinema", "Library", "Restaurant", "Cafe", "Bar", "Art gallery", "Performing arts theater"),
   ];
-  assert.deepEqual(showRooms(rooms, 12).map((x) => x.name), ["Ryman Auditorium", "The Cavern Club", "The Old Bar", "The O2", "Westbeth Artists Housing"]);
+  assert.deepEqual(showRooms(rooms, 12).map((x) => x.name), ["Ryman Auditorium", "The Cavern Club", "The Old Bar", "The O2", "Westbeth Artists Housing", "Barbican Centre"]);
   assert.deepEqual(showRooms(rooms, 2, "1").map((x) => x.name), ["Handel Hendrix House", "Ryman Auditorium"], "the venue's own room stays");
 });
 
@@ -579,4 +580,10 @@ test("a venue typed without a comma is also looked up by name alone when the cit
   const steel = { id: "2", name: "Brooklyn Steel", types: [], categories: ["Event venue", "Live music venue"], city: "New York", region: "New York", countryCode: "US" };
   const r = await resolveVenue({ search: async (q: string) => (q === "Brooklyn Steel" ? [steel] : [steak]) } as any, "Brooklyn Steel New York");
   assert.equal(`${r!.entity.name} ${r!.match}`, "Brooklyn Steel exact");
+});
+
+test("artists: a name typed as part of a band's name stays a near match (seen live: Edward Sharpe)", async () => {
+  const fake = (names: string[]) => ({ search: async () => names.map((name, i) => ({ id: `id${i}`, name, types: ["urn:entity:artist"] })) }) as any;
+  const r = await resolveArtist(fake(["Edward Sharpe & The Magnetic Zeros", "Edward Maya"]), "Edward Sharpe");
+  assert.equal(`${r!.entity.name} ${r!.match}`, "Edward Sharpe & The Magnetic Zeros closest");
 });

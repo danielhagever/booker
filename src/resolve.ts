@@ -271,9 +271,11 @@ export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | 
   const exact = spaced.length ? spaced : found.filter((e) => (initials(input) || initials(e.name)) && same(e));
   // Otherwise the same letters spaced differently are the closest match: "ACDC" for AC/DC, "boy genius" for
   // boygenius, ahead of other near names.
-  // Alternatives must resemble from both sides: "Marcia Ball" shares one word with "Cock and Ball Torture",
-  // half of what was typed but a quarter of that name.
-  const both = (e: Entity) => resembles(input, e.name) && resembles(e.name, input);
+  // A near name must resemble from both sides unless what was typed is part of it: "Marcia Ball" shares one
+  // word with "Cock and Ball Torture" (half of what was typed, a quarter of that name), while "Edward Sharpe"
+  // is part of "Edward Sharpe & The Magnetic Zeros".
+  const inside = (e: Entity) => ` ${words(e.name).join(" ")} `.includes(` ${words(input).join(" ")} `);
+  const both = (e: Entity) => resembles(input, e.name) && (inside(e) || resembles(e.name, input));
   const list = [...found.filter(same), ...found.filter((e) => !same(e))].filter((e) => exact.includes(e) || same(e) || both(e));
   if (!list.length) return null;
   const pick = exact[0] ?? list[0];
