@@ -156,10 +156,14 @@ const WIDEN = 0.1;
 // The Old Bar and the Barbican (an art gallery only tenth) stay.
 // Twelve are asked for, six kept in Qloo's order, never leaving out the venue's own room.
 const SHOW_CATEGORY = /\b(live music|music venue|night ?club|jazz club|concert hall|bar|pub|lounge|performing arts|auditorium|amphitheat(er|re)|arena|stage)\b/i;
-const MAINLY_ELSE = /\b(museum|gallery|flea market|film production)\b/i;
+const MAINLY_ELSE = /\b(museum|gallery|flea market|film production|store|shop)\b/i;
+// A name that says so wins over the categories: Westbeth Artists Housing is filed first as an art center and a
+// live music venue, but it is housing.
+const NAMED_ELSE = /\b(museum|gallery|housing|apartments)\b/i;
 export const mainlyShows = (r: { name?: string; categories?: string[] }) => {
   const cats = r.categories ?? [];
-  return cats.slice(0, 2).some((c) => SHOW_CATEGORY.test(c)) || !(cats.slice(0, 4).some((c) => MAINLY_ELSE.test(c)) || MAINLY_ELSE.test(r.name ?? ""));
+  if (NAMED_ELSE.test(r.name ?? "")) return false;
+  return cats.slice(0, 2).some((c) => SHOW_CATEGORY.test(c)) || !cats.slice(0, 4).some((c) => MAINLY_ELSE.test(c));
 };
 export function showRooms<T extends { id?: string; name?: string; categories?: string[] }>(rooms: T[], keep: number, own?: string): T[] {
   return rooms.filter((r) => r.id === own || mainlyShows(r)).slice(0, keep);
@@ -480,7 +484,7 @@ export async function forArtist(
     ours: ["Cities are ordered by Qloo's affinity for the act there; a city Qloo has no score for comes last."],
     limits: [
       "Qloo measures taste, not capacity, fees or availability: check that a room's size fits before you pitch it.",
-      "Rooms are the places Qloo tags as live music venues or concert halls, in Qloo's order; a place mainly used as a museum, gallery, flea market or film studio (its first categories or its name say so) is left out. Each room shows its main categories: some are classical halls or arenas, so check that a room books your kind of show.",
+      "Rooms are the places Qloo tags as live music venues or concert halls, in Qloo's order; a place mainly used as a museum, gallery, shop, flea market, film studio or housing (its first categories or its name say so) is left out. Each room shows its main categories: some are classical halls or arenas, so check that a room books your kind of show.",
       "A city's score compares the act with everything that city likes; it is a relative signal, not a ticket forecast.",
     ],
     degraded: false,

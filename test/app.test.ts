@@ -105,18 +105,18 @@ test("summaries rank only the cities Qloo scored", () => {
 test("MCP: the answer names pitches that were only a closest match, with alternatives, and pitches not found", async () => {
   const headers = { "content-type": "application/json", accept: "application/json, text/event-stream" };
   const m = mockFetch((c) =>
-    c.host === "qloo.test" && c.path === "/search" && c.params.get("query") === "snail male"
-      ? { body: { results: [artist(13, "Snail Mail", 0.983), artist(14, "Snail Male Band", 0.4)] } }
+    c.host === "qloo.test" && c.path === "/search" && c.params.get("query") === "Wednsday"
+      ? { body: { results: [artist(13, "Wednesday", 0.955), artist(14, "Wednesday Campanella", 0.8)] } }
       : qloo(c),
   );
   try {
     const call = new Request("https://booker.test/mcp", {
       method: "POST",
       headers,
-      body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "find_acts_for_venue", arguments: { venue: "The Empty Bottle, Chicago", acts: ["Wednesday"], pitches: ["snail male", "Nobody Real"] } } }),
+      body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "find_acts_for_venue", arguments: { venue: "The Empty Bottle, Chicago", acts: ["Wednesday"], pitches: ["Wednsday", "Nobody Real"] } } }),
     });
     const text = JSON.parse((await (await worker.fetch(call, env())).text()).split("\n").find((l) => l.startsWith("data: "))!.slice(6)).result.content[0].text;
-    assert.match(text, /Pitch "snail male" was matched to Snail Mail \(closest Qloo match, not exactly what was typed\); alternatives: Snail Male Band \(Indie\) \[id /);
+    assert.match(text, /Pitch "Wednsday" was matched to Wednesday \(closest Qloo match, not exactly what was typed\); alternatives: Wednesday Campanella \(Indie\) \[id /);
     assert.match(text, /Pitches not found in Qloo: Nobody Real\./);
   } finally {
     m.restore();
@@ -224,4 +224,12 @@ test("the page shows how a city was read when its comma part didn't match", () =
 test("rooms show their main categories (Qloo's first two) and a later music one, in the city cards and the rooms in town", () => {
   assert.match(page, /c\.slice\(0, 2\)\.join\(", "\) \+ \(music && !c\.slice\(0, 2\)\.includes\(music\)/);
   assert.equal(page.match(/esc\(roomCats\(r\.categories\)\)/g)?.length, 2);
+});
+
+test("the artist summary doesn't repeat a city in a room's name, and shows a fourth decimal rather than a false tie", () => {
+  const t: any = { artist: { name: "Lana Del Rey" }, cities: [
+    { label: "Paris, France", affinity: 0.99981, rooms: [{ name: "The American Cathedral in Paris" }] },
+    { label: "Berlin, Germany", affinity: 0.99962, rooms: [] },
+  ] };
+  assert.equal(tourSummary(t), "Lana Del Rey's crowd is strongest in Paris (0.9998), then Berlin (0.9996). Best-fit rooms: The American Cathedral in Paris.");
 });

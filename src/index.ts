@@ -27,7 +27,7 @@ const failure = (e: unknown) => {
 };
 
 // Bump whenever the pipeline or the result format changes, so no one gets yesterday's logic.
-const CACHE_VERSION = 34;
+const CACHE_VERSION = 35;
 
 async function sha(s: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -102,11 +102,16 @@ export function tourSummary(r: TourResult): string {
   const city = (x: TourResult["cities"][number]) => x.label.split(",")[0];
   const scored = r.cities.filter((x) => x.affinity !== undefined);
   const unscored = r.cities.filter((x) => x.affinity === undefined).map(city);
-  const order = scored.slice(0, 3).map((x) => `${city(x)} (${x.affinity!.toFixed(3)})`);
+  // Three decimals, or four when three would show a tie that isn't one (0.9996 and 0.9998 both "1.000").
+  const shown = scored.slice(0, 3);
+  const digits = new Set(shown.map((x) => x.affinity!.toFixed(3))).size < shown.length ? 4 : 3;
+  const order = shown.map((x) => `${city(x)} (${x.affinity!.toFixed(digits)})`);
   const head = order.length
     ? `${r.artist.name}'s crowd is strongest in ${order[0]}${order.length > 1 ? `, then ${list(order.slice(1))}` : ""}.${unscored.length ? ` Qloo has no city score for ${list(unscored)}.` : ""}`
     : `Qloo has no city score for ${r.artist.name} in ${list(unscored)}.`;
-  const rooms = r.cities.filter((x) => x.rooms[0]).slice(0, 3).map((x) => `${x.rooms[0].name} in ${city(x)}`);
+  // "The American Cathedral in Paris" isn't followed by "in Paris" again.
+  const at = (name: string, c: string) => (name.toLowerCase().includes(c.toLowerCase()) ? name : `${name} in ${c}`);
+  const rooms = r.cities.filter((x) => x.rooms[0]).slice(0, 3).map((x) => at(x.rooms[0].name, city(x)));
   return `${head}${rooms.length ? ` Best-fit rooms: ${list(rooms)}.` : ""}`;
 }
 

@@ -63,6 +63,16 @@ export function resembles(typed: string, name: string): boolean {
   return wordsResemble(words(typed), words(name), true);
 }
 
+// Small words don't make two names alike ("of", "the", "and", "de", "la").
+const SMALL = new Set(["of", "the", "and", "a", "an", "de", "la", "le", "el", "los", "las", "y", "et", "und", "der", "die", "das", "du", "des", "n"]);
+const closeTo = (w: string, b: string[]) => b.some((x) => x === w || typoDistance(w, x) <= (w.length > 5 ? 2 : w.length > 3 ? 1 : 0));
+// The share of a's words, small words aside, that are close to some word of b.
+function share(a: string[], b: string[]): number {
+  const keep = (ws: string[]) => (ws.some((w) => !SMALL.has(w)) ? ws.filter((w) => !SMALL.has(w)) : ws);
+  const ca = keep(a), cb = keep(b);
+  return ca.length ? ca.filter((w) => closeTo(w, cb)).length / ca.length : 0;
+}
+
 function wordsResemble(a: string[], b: string[], half: boolean): boolean {
   if (!a.length || !b.length) return false;
   const A = ` ${a.join(" ")} `, B = ` ${b.join(" ")} `;
@@ -274,16 +284,25 @@ export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | 
   // A near name must resemble from both sides unless what was typed is part of it: "Marcia Ball" shares one
   // word with "Cock and Ball Torture" (half of what was typed, a quarter of that name), while "Edward Sharpe"
   // is part of "Edward Sharpe & The Magnetic Zeros".
-  const inside = (e: Entity) => ` ${words(e.name).join(" ")} `.includes(` ${words(input).join(" ")} `);
-  const both = (e: Entity) => resembles(input, e.name) && (inside(e) || resembles(e.name, input));
-  const list = [...found.filter(same), ...found.filter((e) => !same(e))].filter((e) => exact.includes(e) || same(e) || both(e));
+  // Otherwise half of what was typed, small words aside, must be close to the name and half the name to what
+  // was typed, and near names are ranked by how close they are, not Qloo's order ("Tom Pety" is Tom Petty,
+  // not Tom Waits). "Not it?" offers only names closer than that: most of what was typed ("Big Thief" isn't
+  // offered Big Sean; "Horse Jumper of Love" isn't offered Love of Lesbian).
+  const typedWords = words(input);
+  const inside = (e: Entity) => ` ${words(e.name).join(" ")} `.includes(` ${typedWords.join(" ")} `);
+  const part = (e: Entity) => { const n = words(e.name); return ` ${typedWords.join(" ")} `.includes(` ${n.join(" ")} `) && n.length * 2 >= typedWords.length; };
+  const sure = (e: Entity) => exact.includes(e) || same(e) || inside(e) || part(e);
+  const score = (e: Entity) => (exact.includes(e) || same(e) ? 9 : share(typedWords, words(e.name)) + share(words(e.name), typedWords));
+  const near = (e: Entity) => sure(e) || (share(typedWords, words(e.name)) >= 0.5 && share(words(e.name), typedWords) >= 0.5);
+  const list = found.filter(near).map((e, i) => ({ e, i, s: score(e) })).sort((x, y) => y.s - x.s || x.i - y.i).map((x) => x.e);
   if (!list.length) return null;
+  const offered = (e: Entity) => sure(e) || share(typedWords, words(e.name)) > 0.5;
   const pick = exact[0] ?? list[0];
   return {
     input,
     entity: pick,
     match: exact.length === 1 ? "exact" : exact.length > 1 ? "ambiguous" : "closest",
-    alternatives: list.filter((e) => e.id !== pick.id).slice(0, 4).map((e) => ({ id: e.id, name: label(e), note: e.genres?.[0] })),
+    alternatives: list.filter((e) => e.id !== pick.id && offered(e)).slice(0, 4).map((e) => ({ id: e.id, name: label(e), note: e.genres?.[0] })),
   };
 }
 

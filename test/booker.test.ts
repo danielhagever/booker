@@ -543,8 +543,10 @@ test("rooms: a place mainly used as a museum, gallery or flea market is left out
     r("8", "The O2", "Outlet mall", "Arena", "Restaurant", "Bowling alley", "Movie theater", "Live music venue"),
     r("9", "Westbeth Artists Housing", "Art center", "Live music venue", "Arts organization", "Art gallery"),
     r("10", "Barbican Centre", "Exhibition and trade center", "Exhibition and trade centre", "Conference center", "Event venue", "Cinema", "Library", "Restaurant", "Cafe", "Bar", "Art gallery", "Performing arts theater"),
+    r("11", "Shuga Records", "Clothing store", "Electronics store", "Record store", "Live music venue"),
+    r("12", "Third Man Records", "Record store", "Live music venue"),
   ];
-  assert.deepEqual(showRooms(rooms, 12).map((x) => x.name), ["Ryman Auditorium", "The Cavern Club", "The Old Bar", "The O2", "Westbeth Artists Housing", "Barbican Centre"]);
+  assert.deepEqual(showRooms(rooms, 12).map((x) => x.name), ["Ryman Auditorium", "The Cavern Club", "The Old Bar", "The O2", "Barbican Centre", "Third Man Records"]);
   assert.deepEqual(showRooms(rooms, 2, "1").map((x) => x.name), ["Handel Hendrix House", "Ryman Auditorium"], "the venue's own room stays");
 });
 
@@ -572,7 +574,7 @@ test("every category of a place is kept: The O2's music category comes sixth (se
 test("artists: an alternative must resemble the name from both sides (seen live: Marcia Ball)", async () => {
   const fake = (names: string[]) => ({ search: async () => names.map((name, i) => ({ id: `id${i}`, name, types: ["urn:entity:artist"] })) }) as any;
   const r = await resolveArtist(fake(["Marcia Ball", "Cock and Ball Torture", "Marcia Griffiths"]), "Marcia Ball");
-  assert.deepEqual(r!.alternatives.map((a) => a.name), ["Marcia Griffiths"]);
+  assert.deepEqual(r!.alternatives.map((a) => a.name), [], "neither shares more than one of the two typed words");
 });
 
 test("a venue typed without a comma is also looked up by name alone when the city threw the search off", async () => {
@@ -586,4 +588,14 @@ test("artists: a name typed as part of a band's name stays a near match (seen li
   const fake = (names: string[]) => ({ search: async () => names.map((name, i) => ({ id: `id${i}`, name, types: ["urn:entity:artist"] })) }) as any;
   const r = await resolveArtist(fake(["Edward Sharpe & The Magnetic Zeros", "Edward Maya"]), "Edward Sharpe");
   assert.equal(`${r!.entity.name} ${r!.match}`, "Edward Sharpe & The Magnetic Zeros closest");
+});
+
+test("artists: near names are ranked by closeness, and Not it? offers only close ones (seen live)", async () => {
+  const fake = (names: string[]) => ({ search: async () => names.map((name, i) => ({ id: `id${i}`, name, types: ["urn:entity:artist"] })) }) as any;
+  const tom = await resolveArtist(fake(["Tom Waits", "Tom Petty", "Tom Misch"]), "Tom Pety");
+  assert.equal(`${tom!.entity.name} ${tom!.match}`, "Tom Petty closest");
+  const big = await resolveArtist(fake(["Big Thief", "The Notorious B.I.G.", "Big Sean", "Mr. Big"]), "Big Thief");
+  assert.deepEqual(big!.alternatives, []);
+  const hjol = await resolveArtist(fake(["Horse Jumper of Love", "Love of Lesbian", "Book Of Love"]), "Horse Jumper of Love");
+  assert.deepEqual(hjol!.alternatives, []);
 });
