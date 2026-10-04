@@ -157,8 +157,9 @@ const SHOW_CATEGORY = /\b(live music|music venue|night ?club|jazz club|concert h
 export function showRooms<T extends { id?: string; categories?: string[] }>(rooms: T[], keep: number, own?: string): T[] {
   return rooms.filter((r) => r.id === own || (r.categories ?? []).some((c) => SHOW_CATEGORY.test(c))).slice(0, keep);
 }
-// A room that is mainly something else (a museum that hosts concerts) isn't named as the best fit.
-const MAINLY_ELSE = /\b(museum|gallery|historical landmark|tourist attraction|flea market|film production)\b/i;
+// A room that is mainly something else (a museum that hosts concerts) isn't named as the best fit; a tourist
+// attraction or landmark can be (the Cavern Club is both).
+const MAINLY_ELSE = /\b(museum|gallery|flea market|film production)\b/i;
 export const mainlyShows = (r: { categories?: string[] }) => !(r.categories ?? []).some((c) => MAINLY_ELSE.test(c));
 const TASTE_GAP = 0.09;
 

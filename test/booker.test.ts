@@ -544,5 +544,5 @@ test("rooms: places with no music category are left out, in Qloo's order; music 
   ];
   assert.deepEqual(showRooms(rooms, 12).map((x) => x.name), ["Handel Hendrix House", "Ryman Auditorium", "The Cavern Club", "The Old Bar", "Brazos Hall"]);
   assert.deepEqual(showRooms(rooms, 2, "2").map((x) => x.name), ["Handel Hendrix House", "Institute of Contemporary Arts"], "the venue's own room stays");
-  assert.equal(showRooms(rooms, 12).find(mainlyShows)!.name, "Brazos Hall", "a museum or tourist attraction isn't named the best fit");
+  assert.deepEqual(showRooms(rooms, 12).filter(mainlyShows).map((x) => x.name), ["The Cavern Club", "Brazos Hall"], "a museum or gallery isn't named the best fit; a tourist attraction can be");
 });
