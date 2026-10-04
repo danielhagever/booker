@@ -235,7 +235,10 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
     };
     const otherPlace = (rest: string[]) => place(rest).some((w) => w !== "city") && place(rest).every((w) => anyPlace.has(w));
     const raw = words(e.name);
-    const named = [raw, dropEnd(raw, (w) => loc.city.includes(w))];
+    // The name, without its city at the end ("Mohawk Austin" is Mohawk), and without its state or nickname
+    // when a real name is left ("Billy Bob's Texas" is Billy Bob's, in Fort Worth; "Club Texas" isn't Club).
+    const unplaced = dropEnd(raw, (w) => w !== "city" && loc.all.has(w));
+    const named = [raw, dropEnd(raw, (w) => loc.city.includes(w)), ...(unplaced.some((w) => !GENERIC.has(w) && !SMALL.has(w)) ? [unplaced] : [])];
     let full = false, bare = false, bareAnywhere = false, elsewhere = false;
     for (const n of named) {
       const rest = afterName(typed, n);
@@ -300,9 +303,17 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
         return next === t || next.startsWith(t) || d <= (t.length >= 4 ? 2 : 1);
       });
       if (goesOn) continue;
-      // Better with the room's own city typed, even misspelled ("House of Blues Huston").
-      const ownCity = place(rest).some((w) => w !== "city" && (loc.all.has(w) || loc.city.some((c) => c.length >= 5 && typoDistance(w, c) <= 1)));
-      opens = Math.max(opens, ownCity ? 2 : 1);
+      // Better with the room's own place typed (its city, state or nickname), best exactly; a cut-off of three
+      // letters or more or a misspelling counts too ("Brooklyn Bowl Phila", "City Winery ATL", "House of Blues
+      // Hueston", "Billy Bob's Texs"), as goesOn's closeness ("LA" isn't cut-off Las Vegas); one letter off before
+      // two ("Huston" is Houston, not Boston).
+      const said = place(rest).filter((w) => w !== "city");
+      // How far a typed word is from the room's place: 1 cut off or one letter off, 2 two letters off (words of four
+      // letters or more), else too far.
+      const off = (w: string) =>
+        Math.min(9, ...[...loc.all].filter((p) => p !== "city" && p.length >= 4 && w.length >= 3).map((p) => { const d = p.startsWith(w) ? 1 : typoDistance(w, p); return d <= (w.length >= 4 ? 2 : 1) ? d : 9; }));
+      const nearest = Math.min(9, ...said.map(off));
+      opens = Math.max(opens, said.some((w) => loc.all.has(w)) ? 3 : nearest <= 2 ? 3 - nearest / 2 : 1);
     }
     return { e, order, inCity, full, bare, bareAnywhere, elsewhere, longerOwn, longerOther, opens, closeness, resembles: wordsResemble(typedContent, near, false), music };
   });
@@ -326,7 +337,7 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
       : m.full ? 4
       : m.bare ? 5
       : m.elsewhere ? 6
-      : m.opens === 2 ? 6.3
+      : m.opens > 1 ? 6.3 + (3 - m.opens) / 5 // 6.3 own place, 6.4 one letter off or cut off, 6.5 two letters off
       : m.opens === 1 ? 6.6
       : m.resembles ? 7
       : 9;
