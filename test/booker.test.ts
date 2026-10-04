@@ -545,8 +545,11 @@ test("rooms: a place mainly used as a museum, gallery or flea market is left out
     r("10", "Barbican Centre", "Exhibition and trade center", "Exhibition and trade centre", "Conference center", "Event venue", "Cinema", "Library", "Restaurant", "Cafe", "Bar", "Art gallery", "Performing arts theater"),
     r("11", "McCabe's Guitar Shop", "Guitar store", "Musical instrument store", "Musical instrument rental service", "Concert hall"),
     r("12", "The Museum Club", "Bar", "Live music venue"),
+    r("13", "Third Man Records", "Record store", "Live music venue"),
+    r("14", "Shuga Records", "Clothing store", "Electronics store", "Record store", "Live music venue"),
   ];
-  assert.deepEqual(showRooms(rooms, 12).map((x) => x.name), ["Ryman Auditorium", "The Cavern Club", "The Old Bar", "The O2", "Barbican Centre", "McCabe's Guitar Shop", "The Museum Club"]);
+  // Shops Qloo tags as music rooms stay: in-store shows are shows.
+  assert.deepEqual(showRooms(rooms, 14).map((x) => x.name), ["Ryman Auditorium", "The Cavern Club", "The Old Bar", "The O2", "Barbican Centre", "McCabe's Guitar Shop", "The Museum Club", "Third Man Records", "Shuga Records"]);
   assert.deepEqual(showRooms(rooms, 2, "1").map((x) => x.name), ["Handel Hendrix House", "Ryman Auditorium"], "the venue's own room stays");
 });
 
@@ -604,4 +607,22 @@ test("artists: near names are ranked by closeness, and Not it? offers only close
   assert.equal(`${dls!.entity.name} ${dls!.match}`, "De La Soul closest");
   const sol = await resolveArtist(fake(["De La Soul", "Sol Seppy"]), "Sol");
   assert.equal(sol!.entity.name, "Sol Seppy", "a name holding the typed word beats one close only by spelling");
+  for (const [typed, names, want] of [
+    ["Future Island", ["Future", "Future Islands"], "Future Islands"],
+    ["Future Island", ["Future Islands", "Future"], "Future Islands"],
+    ["Queen Latifa", ["Queen", "Queen Latifah"], "Queen Latifah"],
+    ["Cher Loyd", ["Cher", "Cher Lloyd"], "Cher Lloyd"],
+    ["La Rou", ["Roux", "La Roux"], "La Roux"],
+    ["De La Sol", ["Sol Seppy", "De La Soul"], "De La Soul"],
+    ["Juniour Boys", ["Beastie Boys", "Junior Boys"], "Junior Boys"],
+    ["Hank Williams Junior", ["Hank Williams", "Hank Williams Jr."], "Hank Williams Jr."],
+  ] as const) {
+    const got = await resolveArtist(fake([...names]), typed);
+    assert.equal(got!.entity.name, want, `${typed} with ${names.join(", ")}`);
+  }
+  for (const [typed, names] of [["Mew", ["Mew", "mewa"]], ["Low", ["Low", "Lou Reed"]], ["Hot Chip", ["Hot Chip", "Hit Chip"]]] as const) {
+    const got = await resolveArtist(fake([...names]), typed);
+    assert.deepEqual(got!.alternatives.map((a) => a.name), [], `${typed}: a short word one letter off isn't offered`);
+  }
+  assert.equal(await resolveArtist(fake(["Dex"]), "Dax"), null);
 });
