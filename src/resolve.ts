@@ -308,10 +308,14 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
       // Hueston", "Billy Bob's Texs"), as goesOn's closeness ("LA" isn't cut-off Las Vegas); one letter off before
       // two ("Huston" is Houston, not Boston).
       const said = place(rest).filter((w) => w !== "city");
-      // How far a typed word is from the room's place: 1 cut off or one letter off, 2 two letters off (words of four
-      // letters or more), else too far.
+      // How far a typed word is from the room's place, by its full city and state names only (not "Mass" or
+      // "NOLA": "East" and "DTLA" aren't places): 1 a cut-off city (three letters or more) or one letter off, 2 two
+      // letters off in a word of six letters or more, else too far ("Penn Quarter" isn't Pennsylvania, "Park"
+      // isn't York).
+      const cityWords = loc.city.filter((p) => p.length >= 4);
+      const fullNames = [...cityWords, ...words(e.region ?? "").filter((p) => p.length >= 4)];
       const off = (w: string) =>
-        Math.min(9, ...[...loc.all].filter((p) => p !== "city" && p.length >= 4 && w.length >= 3).map((p) => { const d = p.startsWith(w) ? 1 : typoDistance(w, p); return d <= (w.length >= 4 ? 2 : 1) ? d : 9; }));
+        w.length < 3 ? 9 : Math.min(9, ...cityWords.filter((p) => p.startsWith(w)).map(() => 1), ...fullNames.map((p) => typoDistance(w, p)).map((d) => (d <= (w.length >= 6 ? 2 : 1) ? d : 9)));
       const nearest = Math.min(9, ...said.map(off));
       opens = Math.max(opens, said.some((w) => loc.all.has(w)) ? 3 : nearest <= 2 ? 3 - nearest / 2 : 1);
     }
