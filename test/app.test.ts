@@ -267,3 +267,18 @@ test("the inbox shows how each pitch was matched, and Not it? can change a pitch
   assert.match(page, /chosen\(p\.input, "pitch"\)/);
   assert.match(page, /p\.match === "ambiguous" \? "several match this name"/);
 });
+
+test("MCP: a body over 256 KB is refused before it is read in full; a normal call still works", async () => {
+  const headers = { "content-type": "application/json", accept: "application/json, text/event-stream", "mcp-protocol-version": "2025-06-18" };
+  const mcp = (body: BodyInit, more: Record<string, string> = {}) =>
+    worker.fetch(new Request("https://booker.test/mcp", { method: "POST", headers: { ...headers, ...more }, body, duplex: "half" } as RequestInit), env());
+  const big = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: { pad: "x".repeat(300_000) } });
+  assert.equal((await mcp(big)).status, 413);
+  // Streamed, with no length given.
+  assert.equal((await mcp(new ReadableStream({ start: (c) => (c.enqueue(new TextEncoder().encode(big)), c.close()) }))).status, 413);
+  // A stated length over the cap is refused without reading at all (this body would fail if it were read).
+  assert.equal((await mcp(new ReadableStream({ pull: () => { throw new Error("read"); } }), { "content-length": "50000000" })).status, 413);
+  const list = await mcp(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }));
+  assert.equal(list.status, 200);
+  assert.match(await list.text(), /"tools"/);
+});

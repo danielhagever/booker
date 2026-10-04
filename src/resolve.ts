@@ -444,6 +444,46 @@ const label = (e: Entity) => (e.disambiguation && nameKey(e.disambiguation) !== 
 // Artists: 5 candidates, like the harness.
 export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | null> {
   const found = (await q.search(input, "urn:entity:artist", 5)).filter((e) => e.types.includes("urn:entity:artist") || !e.types.length);
+  const r = rankNames(found, input);
+  if (!r) return null;
+  return {
+    input,
+    entity: r.pick,
+    match: r.match,
+    // Qloo's search gives artists no genres, so a same-named act is told apart by its popularity.
+    alternatives: r.list.filter((e) => e.id !== r.pick.id && r.offered(e)).slice(0, 4).map((e) => ({ id: e.id, name: label(e), note: e.genres?.[0] ?? (e.popularity !== undefined ? `popularity ${e.popularity.toFixed(2)}` : undefined) })),
+  };
+}
+
+interface Ranked {
+  pick: Entity;
+  match: "exact" | "ambiguous" | "closest";
+  list: Entity[]; // every near name, best first
+  offered: (e: Entity) => boolean; // close enough to offer under "Not it?"
+}
+
+// A note in brackets at the end ("Wednesday (indie rock band)", "Big Thief (Brooklyn)") is how an agent or a
+// person says which one; it isn't part of the name. When the whole text isn't an exact name, the name before
+// the note is matched, the note's words pick among acts that share that name by Qloo's disambiguation, and the
+// pick is only a closest match, since what was typed wasn't a name. A name that ends in brackets itself is
+// still exact.
+const NOTE = /\s*[([]([^()[\]]*)[)\]]\s*$/;
+
+export function rankNames(found: Entity[], input: string): Ranked | null {
+  const all = rankTyped(found, input);
+  const note = NOTE.exec(input);
+  const bare = note ? input.slice(0, note.index).trim() : "";
+  if (all?.match === "exact" || !note) return all;
+  const r = rankTyped(found, bare);
+  if (!r) return all;
+  const told = words(note[1]);
+  const said = r.match === "ambiguous" ? r.list.filter((e) => squashed(e.name) === squashed(r.pick.name) && !!e.disambiguation && words(e.disambiguation).some((w) => told.includes(w))) : [];
+  if (said.length === 1) return { ...r, pick: said[0], match: "closest", list: [said[0], ...r.list.filter((e) => e !== said[0])] };
+  return { ...r, match: r.match === "exact" ? "closest" : r.match };
+}
+
+// The candidates Qloo's search returned for what was typed, ranked; null when none resembles it.
+function rankTyped(found: Entity[], input: string): Ranked | null {
   // Typed with an article, the name letter for letter comes first ("The Killers" is The Killers before
   // Killers; "A Savage" is A. Savage before Savage), and a name equal without the article still makes it
   // ambiguous ("The Eagles" may mean Eagles). Typed without one, the spelling says nothing about the article:
@@ -507,13 +547,7 @@ export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | 
   const fragment = (e: Entity) => !!exact.length && part(e) && !inside(e) && !exact.includes(e) && !same(e);
   const offered = (e: Entity) => (sure(e) && !fragment(e)) || share(typedWords, words(e.name), plurals) > 0.5;
   const pick = exact[0] ?? list[0];
-  return {
-    input,
-    entity: pick,
-    match: exact.length === 1 ? "exact" : exact.length > 1 ? "ambiguous" : "closest",
-    // Qloo's search gives artists no genres, so a same-named act is told apart by its popularity.
-    alternatives: list.filter((e) => e.id !== pick.id && offered(e)).slice(0, 4).map((e) => ({ id: e.id, name: label(e), note: e.genres?.[0] ?? (e.popularity !== undefined ? `popularity ${e.popularity.toFixed(2)}` : undefined) })),
-  };
+  return { pick, match: exact.length === 1 ? "exact" : exact.length > 1 ? "ambiguous" : "closest", list, offered };
 }
 
 // A place counts as a room if Qloo files it as a music venue, a theater, or a bar or club where small
