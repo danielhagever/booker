@@ -443,7 +443,7 @@ const label = (e: Entity) => (e.disambiguation && nameKey(e.disambiguation) !== 
 
 // Artists: 5 candidates, like the harness.
 export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | null> {
-  const found = (await q.search(input, "urn:entity:artist", 5)).filter((e) => e.types.includes("urn:entity:artist") || !e.types.length);
+  const found = (await q.search(withoutNote(input), "urn:entity:artist", 5)).filter((e) => e.types.includes("urn:entity:artist") || !e.types.length);
   const r = rankNames(found, input);
   if (!r) return null;
   return {
@@ -467,16 +467,21 @@ interface Ranked {
 // the note is matched, the note's words pick among acts that share that name by Qloo's disambiguation, and the
 // pick is only a closest match, since what was typed wasn't a name. A name that ends in brackets itself is
 // still exact.
+// Qloo is searched with the name alone: searched with the note, it returns names that share the note's words
+// (live: "Lafayette Afro Rock Band" for "Wednesday (indie rock band)"), and those are never a match.
 const NOTE = /\s*[([]([^()[\]]*)[)\]]\s*$/;
+export const withoutNote = (s: string) => {
+  const note = NOTE.exec(s);
+  return (note && s.slice(0, note.index).trim()) || s;
+};
 
 export function rankNames(found: Entity[], input: string): Ranked | null {
   const all = rankTyped(found, input);
-  const note = NOTE.exec(input);
-  const bare = note ? input.slice(0, note.index).trim() : "";
-  if (all?.match === "exact" || !note) return all;
+  const bare = withoutNote(input);
+  if (all?.match === "exact" || bare === input) return all;
   const r = rankTyped(found, bare);
-  if (!r) return all;
-  const told = words(note[1]);
+  if (!r) return null;
+  const told = words(NOTE.exec(input)![1]);
   const said = r.match === "ambiguous" ? r.list.filter((e) => squashed(e.name) === squashed(r.pick.name) && !!e.disambiguation && words(e.disambiguation).some((w) => told.includes(w))) : [];
   if (said.length === 1) return { ...r, pick: said[0], match: "closest", list: [said[0], ...r.list.filter((e) => e !== said[0])] };
   return { ...r, match: r.match === "exact" ? "closest" : r.match };
