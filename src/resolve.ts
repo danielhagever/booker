@@ -223,6 +223,15 @@ function afterName(typed: string[], name: string[]): string[] | null {
 
 export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exact: Entity[]; list: Entity[] } | null {
   const typed = words(input);
+  // Where the typed words were separated by a comma: a place's words never span one ("Fuller St, Helena").
+  const BREAK = "zqxbreakzq";
+  const commaAt = new Set<number>();
+  {
+    let k = 0;
+    const marked = words(input.replace(/,/g, ` ${BREAK} `));
+    for (const w of marked) w === BREAK ? commaAt.add(k) : k++;
+    if (k !== typed.length) commaAt.clear();
+  }
   // For near misses, only the words that name a room count: no location word of any candidate (some
   // records have no city) and no generic word, so "New York City Center" doesn't resemble "Bowery
   // Ballroom New York City".
@@ -320,9 +329,13 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
       // two ("Huston" is Houston, not Boston).
       const placed = place(rest);
       const said = placed.filter((w) => w !== "city");
-      // A place typed in full, all its words: the room's own ("Mexico City", "Northern Ireland") or its country;
-      // a direction or title may be shortened ("N Ireland", "W Virginia", "Mt Vernon", "St Paul").
-      const typedIn = (ph: string[]) => ph.every((w) => placed.some((t) => t === w || PLACE_ABBR[t]?.includes(w)));
+      // A place typed in full, its words together and not across a comma: the room's own ("Mexico City",
+      // "Northern Ireland") or its country; a direction or title may be shortened ("N Ireland", "W Virginia", "Mt
+      // Vernon", "St Paul"; but "1354 W Wabansia Ave, Chicago" isn't West Chicago, "Fuller St, Helena" isn't
+      // Saint Helena).
+      const base = typed.length - rest.length;
+      const typedIn = (ph: string[]) =>
+        rest.some((_, j) => ph.every((w, m) => { const t = rest[j + m]; return t !== undefined && (t === w || PLACE_ABBR[t]?.includes(w)) && (m === 0 || !commaAt.has(base + j + m)); }));
       // How far a typed word is from the room's place. Its own city (words of four letters or more): 1 when cut off
       // ("Phila", "ATL", "Det", also before a neighborhood) or one letter off in a word of four letters or more
       // ("Pual", "Rneo"; "End" isn't Bend). Its other place words of four letters or more: its state, the big city
