@@ -602,7 +602,7 @@ test("artists: near names are ranked by closeness, and Not it? offers only close
   const hjol = await resolveArtist(fake(["Horse Jumper of Love", "Love of Lesbian", "Book Of Love"]), "Horse Jumper of Love");
   assert.deepEqual(hjol!.alternatives, []);
   const hank = await resolveArtist(fake(["Hank Williams", "Hank Williams III"]), "Hank Williams 3");
-  assert.equal(`${hank!.entity.name} ${hank!.match}`, "Hank Williams III exact");
+  assert.equal(`${hank!.entity.name} ${hank!.match}`, "Hank Williams III closest");
   const dls = await resolveArtist(fake(["De La Soul"]), "De La Sol");
   assert.equal(`${dls!.entity.name} ${dls!.match}`, "De La Soul closest");
   const sol = await resolveArtist(fake(["De La Soul", "Sol Seppy"]), "Sol");

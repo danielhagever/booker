@@ -26,7 +26,7 @@ const ARTICLES = new Set(["the", "a", "an"]);
 const FOLD: Record<string, string> = { "\u00f8": "o", "\u00e6": "ae", "\u0153": "oe", "\u00df": "ss", "\u0142": "l", "\u0111": "d", "\u00fe": "th" };
 // Accents are folded ("Beyonce" is Beyoncé); apostrophes, colons and dots join ("Cat's" is "Cats", "9:30"
 // is "930"); other punctuation separates words.
-const SPELLING: Record<string, string> = { theater: "theatre", amphitheater: "amphitheatre", centre: "center", ii: "2", iii: "3", iv: "4", jr: "junior" };
+const SPELLING: Record<string, string> = { theater: "theatre", amphitheater: "amphitheatre", centre: "center" };
 const words = (s: string) => {
   const ws = normalizeName(s)
     .normalize("NFKD")
@@ -65,7 +65,10 @@ export function resembles(typed: string, name: string): boolean {
 
 // Small words don't make two names alike ("of", "the", "and", "de", "la").
 const SMALL = new Set(["of", "the", "and", "a", "an", "de", "la", "le", "el", "los", "las", "y", "et", "und", "der", "die", "das", "du", "des", "n"]);
-const closeTo = (w: string, b: string[]) => b.some((x) => x === w || typoDistance(w, x) <= (w.length > 5 ? 2 : w.length > 3 ? 1 : 0));
+// Words written two ways count as close, not equal ("Hank Williams 3" is close to Hank Williams III), so that
+// initials still compare without spaces ("J. R. Writer" is J.R. Writer).
+const TWIN: Record<string, string> = { "2": "ii", "3": "iii", "4": "iv", jr: "junior" };
+const closeTo = (w: string, b: string[]) => b.some((x) => x === w || TWIN[w] === x || TWIN[x] === w || typoDistance(w, x) <= (w.length > 5 ? 2 : w.length > 3 ? 1 : 0));
 // The share of a's words, small words aside, that are close to some word of b.
 function share(a: string[], b: string[]): number {
   const keep = (ws: string[]) => (ws.some((w) => !SMALL.has(w)) ? ws.filter((w) => !SMALL.has(w)) : ws);
@@ -292,11 +295,15 @@ export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | 
   const inside = (e: Entity) => ` ${words(e.name).join(" ")} `.includes(` ${typedWords.join(" ")} `);
   const part = (e: Entity) => { const n = words(e.name); return ` ${typedWords.join(" ")} `.includes(` ${n.join(" ")} `) && n.length * 2 >= typedWords.length; };
   const sure = (e: Entity) => exact.includes(e) || same(e) || inside(e) || part(e);
-  // A whole name one letter off what was typed is the closest of all ("Future Island" is Future Islands, not
-  // Future; "De La Sol" is De La Soul, whose short words must otherwise match exactly).
+  // Near names rank in three tiers. A name holding everything typed comes first ("Mavis" is Mavis Staples,
+  // not The Mavis's; "Margo" is Margo Price, not Margot); then a whole name one letter off ("Future Island"
+  // is Future Islands, not Future; "De La Sol" is De La Soul, whose short words must otherwise match
+  // exactly), word for word (Hank Williams isn't one letter off "Hank Williams 3"); then the rest by
+  // closeness. A name held whole by what was typed gets no tier of its own.
   const typedWhole = squashed(input);
-  const whole = (e: Entity) => { const n = squashed(e.name); return Math.min(n.length, typedWhole.length) >= 5 && typoDistance(n, typedWhole) <= 1; };
-  const score = (e: Entity) => (exact.includes(e) || same(e) ? 9 : whole(e) ? 3 : share(typedWords, words(e.name)) + share(words(e.name), typedWords));
+  const whole = (e: Entity) => { const n = squashed(e.name); return words(e.name).length === typedWords.length && Math.min(n.length, typedWhole.length) >= 5 && typoDistance(n, typedWhole) <= 1; };
+  const closeness = (e: Entity) => share(typedWords, words(e.name)) + share(words(e.name), typedWords);
+  const score = (e: Entity) => (exact.includes(e) || same(e) ? 9 : (inside(e) ? 6 : whole(e) ? 3 : 0) + closeness(e));
   const near = (e: Entity) => sure(e) || whole(e) || (share(typedWords, words(e.name)) >= 0.5 && share(words(e.name), typedWords) >= 0.5);
   const list = found.filter(near).map((e, i) => ({ e, i, s: score(e) })).sort((x, y) => y.s - x.s || x.i - y.i).map((x) => x.e);
   if (!list.length) return null;

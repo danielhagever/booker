@@ -1,4 +1,4 @@
-// 262 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
+// 294 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
 // the answer a reasonable person expects. Built by an independent review that ran them through ten versions
 // of the matcher; every one of these was right in at least one version, and all are right now.
 export default async function ({ place, art, runVenue, runArtist, runSplit, is, starts, eqList }) {
@@ -213,6 +213,39 @@ export default async function ({ place, art, runVenue, runArtist, runSplit, is, 
   await runArtist("Nobody Real Band Xyz", A(["The Band", "Band of Horses"]), is("none"));
   await runArtist("Gary Clark", A(["Gary Clark Jr."], "Blues"), aIs("Gary Clark Jr.", "closest"));
   await runArtist("Gary Clark Jr", A(["Gary Clark Jr."], "Blues"), aIs("Gary Clark Jr.", "exact"));
+  // Ranking among near names (review passes 29-32, 2026-10-04): every fix to one of these broke another.
+  await runArtist("Tom Pety", A(["Tom Waits", "Tom Petty", "Tom Petty and the Heartbreakers"]), aIs("Tom Petty", "closest"));
+  await runArtist("Bob Marly", A(["Bob Dylan", "Bob Marley", "Bob Marley & The Wailers"]), aIs("Bob Marley", "closest"));
+  await runArtist("Grace Poter", A(["Grace Jones", "Grace Potter & The Nocturnals"]), aIs("Grace Potter & The Nocturnals", "closest"));
+  await runArtist("Future Island", A(["Future", "Future Islands"]), aIs("Future Islands", "closest"));
+  await runArtist("Future Island", A(["Future Islands", "Future"]), aIs("Future Islands", "closest"));
+  await runArtist("Queen Latifa", A(["Queen", "Queen Latifah"]), aIs("Queen Latifah", "closest"));
+  await runArtist("Cher Loyd", A(["Cher", "Cher Lloyd"]), aIs("Cher Lloyd", "closest"));
+  await runArtist("Death Grip", A(["Death", "Death Grips"]), aIs("Death Grips", "closest"));
+  await runArtist("Prince Royse", A(["Prince", "Prince Royce"]), aIs("Prince Royce", "closest"));
+  await runArtist("The National Prks", A(["The National", "The National Parks"]), aIs("The National Parks", "closest"));
+  await runArtist("Mavis", A(["Mavis Staples", "The Mavis's", "Mavi Sakal", "Mavis Hee", "Mavis,sing!"]), aIs("Mavis Staples", "closest"), "seen live");
+  await runArtist("Mavis", A(["The Mavis's", "Mavis Staples"]), aIs("Mavis Staples", "closest"));
+  await runArtist("Brandi", A(["Brandy", "Brandi Carlile", "Brandi Rhodes"]), aIs("Brandi Carlile", "closest"));
+  await runArtist("Booker T", A(["Booker", "Booker T. & the M.G.'s", "Booker T. Jones"]), starts("Booker T. & the M.G.'s closest", "Booker T. Jones closest"));
+  await runArtist("Margo", A(["Margot", "Margo Price"]), aIs("Margo Price", "closest"));
+  await runArtist("Edward Sharpe", A(["Edward Sharp", "Edward Sharpe & The Magnetic Zeros"]), aIs("Edward Sharpe & The Magnetic Zeros", "closest"));
+  await runArtist("Edward Sharpe", A(["Edward Maya", "Edward Sharpe & The Magnetic Zeros"]), aIs("Edward Sharpe & The Magnetic Zeros", "closest"));
+  await runArtist("Bush", A(["Busch", "Bush Tetras"]), aIs("Bush Tetras", "closest"));
+  await runArtist("Sol", A(["De La Soul", "Sol Seppy"]), aIs("Sol Seppy", "closest"));
+  await runArtist("De La Sol", A(["Sol Seppy", "De La Soul"]), aIs("De La Soul", "closest"));
+  await runArtist("La Rou", A(["Roux", "La Roux"]), aIs("La Roux", "closest"));
+  await runArtist("Wednesdy", A(["Wednesday 13", "Wednesday"]), aIs("Wednesday", "closest"));
+  await runArtist("Lord", A(["Lorde", "Lord Huron"]), (o) => o.startsWith("Lorde ") || o.startsWith("Lord Huron "), "either is a fair reading");
+  await runArtist("Dax", A(["Dex"]), is("none"));
+  await runArtist("Hank Williams 3", A(["Hank Williams", "Hank Williams III"], "Country"), aIs("Hank Williams III", "exact", "closest"));
+  await runArtist("Hank Williams Junior", A(["Hank Williams", "Hank Williams Jr."], "Country"), aIs("Hank Williams Jr.", "exact", "closest"));
+  await runArtist("Boyz 2 Men", A(["Boyz II Men"], "R&B"), aIs("Boyz II Men", "exact", "closest"));
+  await runArtist("Juniour Boys", A(["Beastie Boys", "Junior Boys"]), aIs("Junior Boys", "closest"));
+  await runArtist("J. R. Writer", A(["Writer", "J.R. Writer", "J. Cole"], "Hip hop"), aIs("J.R. Writer", "exact"));
+  await runArtist("J.R. Writer", A(["Writer", "J. R. Writer"], "Hip hop"), aIs("J. R. Writer", "exact"));
+  await runArtist("J. R. Rotem", A(["J.R. Rotem"], "Hip hop"), aIs("J.R. Rotem", "exact"));
+  await runArtist("JRJR", A(["JR JR"]), aIs("JR JR", "exact", "closest"));
   await runArtist("Bea", A(["Beach House"]), is("none"));
   await runArtist("Tyler the Creator", A(["Tyler, The Creator", "Tyler Childers"]), aIs("Tyler, The Creator", "exact"));
   await runArtist("Simon and Garfunkel", A(["Simon & Garfunkel"]), aIs("Simon & Garfunkel", "exact"));
