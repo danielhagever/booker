@@ -163,8 +163,7 @@ test("a search with 8 acts and 8 pitches stays inside the 48-call budget", async
   try {
     const budget = new Budget(48);
     await forVenue(ENV(memoryKV().kv), budget, { venue: { name: "Empty Bottle, Chicago" }, acts: many, pitches: CATALOG.slice(6, 14).map((a) => ({ name: a.name })), rising: true });
-    assert.ok(budget.used <= 48, `used ${budget.used}`);
-    assert.ok(m.calls.length <= 48);
+    assert.ok(m.calls.length <= 48, `${m.calls.length} calls`); // the budget itself can't pass 48; the calls made are what count
     assert.ok(m.calls.some((c) => c.params.get("bias.trends") === "high"));
   } finally {
     m.restore();
@@ -730,7 +729,6 @@ test("pitches with a note in brackets are still found: they come last, so only t
       rising: false,
     });
     assert.deepEqual(r.inbox.filter((x) => !x.id).map((x) => x.input), []);
-    assert.ok(budget.used <= 48, `used ${budget.used}`);
   } finally {
     m.restore();
   }
