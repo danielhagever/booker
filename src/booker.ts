@@ -148,19 +148,21 @@ export const sizeOf = (p: number) => -Math.log10(1 - Math.min(p, 0.99999));
 export const fromSize = (s: number) => 1 - 10 ** -s;
 const WIDEN = 0.1;
 
-// Qloo's rooms for an act (places tagged live music venue or concert hall) can include places with no music
-// category at all (live: the ICA, a gallery and bookshop; Dulwich Picture Gallery; a flea market). Twelve are
-// asked for, those are left out (never the venue's own room), and the first six are kept in Qloo's order. A
-// place that is also filed as a music room stays, whatever else it is: the Ryman is also a museum, the Cavern
-// Club a tourist attraction.
+// Qloo's rooms for an act are places it tags as live music venues or concert halls, so all carry a music
+// category somewhere; for bigger acts some are mainly something else (live: Handel Hendrix House, a museum; the
+// ICA and Dulwich Picture Gallery, galleries; a flea market). Qloo lists a place's main uses first, so a room
+// is left out when its first two categories hold no show category and it is also a museum, gallery, flea
+// market or film studio. The Ryman ("Museum, Performing arts theater"), the Cavern Club and The Old Bar stay.
+// Twelve are asked for, six kept in Qloo's order, never leaving out the venue's own room.
 const SHOW_CATEGORY = /\b(live music|music venue|night ?club|jazz club|concert hall|bar|pub|lounge|performing arts|auditorium|amphitheat(er|re)|arena|stage)\b/i;
-export function showRooms<T extends { id?: string; categories?: string[] }>(rooms: T[], keep: number, own?: string): T[] {
-  return rooms.filter((r) => r.id === own || (r.categories ?? []).some((c) => SHOW_CATEGORY.test(c))).slice(0, keep);
-}
-// A room that is mainly something else (a museum that hosts concerts) isn't named as the best fit; a tourist
-// attraction or landmark can be (the Cavern Club is both).
 const MAINLY_ELSE = /\b(museum|gallery|flea market|film production)\b/i;
-export const mainlyShows = (r: { categories?: string[] }) => !(r.categories ?? []).some((c) => MAINLY_ELSE.test(c));
+export const mainlyShows = (r: { categories?: string[] }) => {
+  const cats = r.categories ?? [];
+  return cats.slice(0, 2).some((c) => SHOW_CATEGORY.test(c)) || !cats.some((c) => MAINLY_ELSE.test(c));
+};
+export function showRooms<T extends { id?: string; categories?: string[] }>(rooms: T[], keep: number, own?: string): T[] {
+  return rooms.filter((r) => r.id === own || mainlyShows(r)).slice(0, keep);
+}
 const TASTE_GAP = 0.09;
 
 export async function forVenue(
@@ -477,7 +479,7 @@ export async function forArtist(
     ours: ["Cities are ordered by Qloo's affinity for the act there; a city Qloo has no score for comes last."],
     limits: [
       "Qloo measures taste, not capacity, fees or availability: check that a room's size fits before you pitch it.",
-      "Rooms are the places Qloo tags as live music venues or concert halls, in Qloo's order; places with no music category (a gallery, a flea market) are left out. Each room shows its categories: some are also museums or classical halls, so check that a room books your kind of show.",
+      "Rooms are the places Qloo tags as live music venues or concert halls, in Qloo's order; a place mainly used as a museum, gallery or flea market (its first categories say so) is left out. Each room shows its main categories: some are classical halls or arenas, so check that a room books your kind of show.",
       "A city's score compares the act with everything that city likes; it is a relative signal, not a ticket forecast.",
     ],
     degraded: false,

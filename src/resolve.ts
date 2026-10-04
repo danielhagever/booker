@@ -271,7 +271,10 @@ export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | 
   const exact = spaced.length ? spaced : found.filter((e) => (initials(input) || initials(e.name)) && same(e));
   // Otherwise the same letters spaced differently are the closest match: "ACDC" for AC/DC, "boy genius" for
   // boygenius, ahead of other near names.
-  const list = [...found.filter(same), ...found.filter((e) => !same(e))].filter((e) => exact.includes(e) || same(e) || resembles(input, e.name));
+  // Alternatives must resemble from both sides: "Marcia Ball" shares one word with "Cock and Ball Torture",
+  // half of what was typed but a quarter of that name.
+  const both = (e: Entity) => resembles(input, e.name) && resembles(e.name, input);
+  const list = [...found.filter(same), ...found.filter((e) => !same(e))].filter((e) => exact.includes(e) || same(e) || both(e));
   if (!list.length) return null;
   const pick = exact[0] ?? list[0];
   return {
@@ -305,8 +308,15 @@ export async function resolveVenue(q: Qloo, input: string): Promise<Resolved | n
   let found = (await q.search(input.replace(/,/g, " "), "urn:entity:place", 8)).filter(isRoom);
   let chosen = chooseVenue(input, found);
   // The city in the query can throw Qloo's search off ("Brooklyn Steel New York" returns hotels and a
-  // steakhouse, not Brooklyn Steel): when nothing matched by name, ask again with the name alone.
-  const name = input.split(",")[0].trim();
+  // steakhouse, not Brooklyn Steel): when nothing matched by name, ask again with the name alone (before the
+  // comma, or without the place words that end the text).
+  let name = input.split(",")[0].trim();
+  if (name === input.trim()) {
+    const places = new Set(found.flatMap((e) => [...locationOf(e).all]));
+    const ws = name.split(/\s+/);
+    while (ws.length > 1 && places.has(words(ws[ws.length - 1]).join(" "))) ws.pop();
+    name = ws.join(" ");
+  }
   if (name !== input.trim() && (!chosen || !chosen.exact.length)) {
     const seen = new Set(found.map((e) => e.id));
     const more = (await q.search(name, "urn:entity:place", 8)).filter((e) => isRoom(e) && !seen.has(e.id));

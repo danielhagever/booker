@@ -1,7 +1,7 @@
 // Booker's pipelines against a mock Qloo shaped like the live API. Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { forArtist, forVenue, sizeOf, fromSize, cityOf, showRooms, mainlyShows } from "../src/booker.ts";
+import { forArtist, forVenue, sizeOf, fromSize, cityOf, showRooms } from "../src/booker.ts";
 import { resembles, nameKey, squashed, isRoom, chooseVenue, resolveArtist, resolveVenue } from "../src/resolve.ts";
 import { names, cityList } from "../src/input.ts";
 import { Budget } from "../src/limits.ts";
@@ -530,21 +530,21 @@ test("city lookup: towns over islands, province and state codes worldwide, and e
   }
 });
 
-test("rooms: places with no music category are left out, in Qloo's order; music rooms stay whatever else they are (seen live)", () => {
+test("rooms: a place mainly used as a museum, gallery or flea market is left out, by Qloo's own category order (seen live)", () => {
   const r = (id: string, name: string, ...categories: string[]) => ({ id, name, categories });
   const rooms = [
     r("1", "Handel Hendrix House", "Historical landmark", "Gift shop", "Museum", "Live music venue"),
-    r("2", "Institute of Contemporary Arts", "Tourist attraction", "Book store", "Art gallery"),
-    r("3", "Ryman Auditorium", "Museum", "Performing arts theater", "Gift shop", "Live music venue"),
+    r("2", "Ryman Auditorium", "Museum", "Performing arts theater", "Gift shop", "Live music venue"),
+    r("3", "Institute of Contemporary Arts", "Tourist attraction", "Book store", "Specialist book shop", "Art gallery", "Live music venue"),
     r("4", "The Cavern Club", "Live music venue", "Bar", "Tourist attraction"),
-    r("5", "Dulwich Picture Gallery", "Cafe", "Gift shop", "Garden", "Event venue"),
+    r("5", "Dulwich Picture Gallery", "Cafe", "Gift shop", "Garden", "Event venue", "Art gallery", "Live music venue"),
     r("6", "The Old Bar", "Pub", "Bar", "Art gallery", "Live music bar"),
-    r("7", "Brazos Hall", "Concert hall", "Wedding venue"),
-    r("8", "The Sustainable Studio", "Art studio", "Coffee shop"),
+    r("7", "Melrose Trading Post", "Record store", "Thrift store", "Flea market", "Arts organization", "Live music venue"),
+    r("8", "The O2", "Outlet mall", "Arena", "Restaurant", "Bowling alley", "Movie theater", "Live music venue"),
+    r("9", "Westbeth Artists Housing", "Art center", "Live music venue", "Arts organization", "Art gallery"),
   ];
-  assert.deepEqual(showRooms(rooms, 12).map((x) => x.name), ["Handel Hendrix House", "Ryman Auditorium", "The Cavern Club", "The Old Bar", "Brazos Hall"]);
-  assert.deepEqual(showRooms(rooms, 2, "2").map((x) => x.name), ["Handel Hendrix House", "Institute of Contemporary Arts"], "the venue's own room stays");
-  assert.deepEqual(showRooms(rooms, 12).filter(mainlyShows).map((x) => x.name), ["The Cavern Club", "Brazos Hall"], "a museum or gallery isn't named the best fit; a tourist attraction can be");
+  assert.deepEqual(showRooms(rooms, 12).map((x) => x.name), ["Ryman Auditorium", "The Cavern Club", "The Old Bar", "The O2", "Westbeth Artists Housing"]);
+  assert.deepEqual(showRooms(rooms, 2, "1").map((x) => x.name), ["Handel Hendrix House", "Ryman Auditorium"], "the venue's own room stays");
 });
 
 test("a venue Qloo's search misses with the city is looked up by name alone (seen live: Brooklyn Steel)", async () => {
@@ -566,4 +566,17 @@ test("every category of a place is kept: The O2's music category comes sixth (se
   } finally {
     m.restore();
   }
+});
+
+test("artists: an alternative must resemble the name from both sides (seen live: Marcia Ball)", async () => {
+  const fake = (names: string[]) => ({ search: async () => names.map((name, i) => ({ id: `id${i}`, name, types: ["urn:entity:artist"] })) }) as any;
+  const r = await resolveArtist(fake(["Marcia Ball", "Cock and Ball Torture", "Marcia Griffiths"]), "Marcia Ball");
+  assert.deepEqual(r!.alternatives.map((a) => a.name), ["Marcia Griffiths"]);
+});
+
+test("a venue typed without a comma is also looked up by name alone when the city threw the search off", async () => {
+  const steak = { id: "1", name: "Brooklyn Chop House Steakhouse Downtown NYC", types: [], categories: ["Steak house", "Cocktail bar"], city: "New York", region: "New York", countryCode: "US" };
+  const steel = { id: "2", name: "Brooklyn Steel", types: [], categories: ["Event venue", "Live music venue"], city: "New York", region: "New York", countryCode: "US" };
+  const r = await resolveVenue({ search: async (q: string) => (q === "Brooklyn Steel" ? [steel] : [steak]) } as any, "Brooklyn Steel New York");
+  assert.equal(`${r!.entity.name} ${r!.match}`, "Brooklyn Steel exact");
 });
