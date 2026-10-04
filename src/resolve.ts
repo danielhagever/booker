@@ -206,9 +206,11 @@ const PLACE_ABBR: Record<string, string[]> = {
   n: ["north", "northern"], no: ["north"], s: ["south", "southern"], so: ["south"], e: ["east", "eastern"], w: ["west", "western"],
   mt: ["mount"], ft: ["fort"], st: ["saint"], ste: ["sainte"],
 };
-// (In chooseVenue, "IN" that opens a part after a comma, or comes before an Indiana zip, is the state:
-// "Broad Ripple, IN 46220"; "in USA" and "in 37215" still connect.)
+// (In chooseVenue, "IN" is the state when it opens a part after a comma and a country follows ("Kirkwood Ave, IN,
+// USA"), before an Indiana zip ("IN 46220"), or at the end; "in USA", "in 37215" and "The Bluebird, in Nashville"
+// still connect.)
 const ZIP = /^\d{5}(\d{4})?$/;
+const COUNTRY_AFTER = new Set(["us", "usa", "united", "america", "canada", "uk", "gb"]);
 const fillerAt = (rest: string[], i: number) => ZIP.test(rest[i]) || ((rest[i] === "in" || rest[i] === "at" || rest[i] === "the") && i < rest.length - 1);
 
 // The rest of the typed words after the candidate's name, if its name opens them (compared without spaces).
@@ -244,7 +246,8 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
   const typedContent = content(typed);
   const filler = (rest: string[], i: number) => {
     const at = typed.length - rest.length + i; // rest is always the end of what was typed
-    if (rest[i] === "in" && (commaAt.has(at) || /^4[67]\d{3}$/.test(rest[i + 1] ?? ""))) return false;
+    const next = rest[i + 1] ?? "";
+    if (rest[i] === "in" && ((commaAt.has(at) && COUNTRY_AFTER.has(next)) || /^4[67]\d{3}$/.test(next))) return false;
     return fillerAt(rest, i);
   };
   const place = (rest: string[]) => rest.filter((_, i) => !filler(rest, i));
