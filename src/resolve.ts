@@ -84,10 +84,10 @@ const closeTo = (w: string, b: string[], plurals = true) => b.some((x) => x === 
 // The share of a's words, small words aside, that are close to some word of b. Plurals of words of three
 // letters or more count between names of as many words: "Fleet Fox" is close to Fleet Foxes and "The Car" to
 // The Cars, but "Boy" isn't to Boys Noize.
-function share(a: string[], b: string[]): number {
+function share(a: string[], b: string[], withPlurals = true): number {
   const keep = (ws: string[]) => (ws.some((w) => !SMALL.has(w)) ? ws.filter((w) => !SMALL.has(w)) : ws);
   const ca = keep(a), cb = keep(b);
-  const plurals = ca.length === cb.length;
+  const plurals = withPlurals && ca.length === cb.length;
   return ca.length ? ca.filter((w) => closeTo(w, cb, plurals)).length / ca.length : 0;
 }
 
@@ -293,11 +293,13 @@ const label = (e: Entity) => (e.disambiguation && nameKey(e.disambiguation) !== 
 // Artists: 5 candidates, like the harness.
 export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | null> {
   const found = (await q.search(input, "urn:entity:artist", 5)).filter((e) => e.types.includes("urn:entity:artist") || !e.types.length);
-  // Letter for letter first ("The Killers" is The Killers, not Killers; "A Savage" is A. Savage, not Savage),
-  // then without a leading article.
+  // Typed with an article, the name letter for letter comes first ("The Killers" is The Killers before
+  // Killers; "A Savage" is A. Savage before Savage), and a name equal without the article still makes it
+  // ambiguous ("The Eagles" may mean Eagles). Typed without one, the spelling says nothing about the article:
+  // "Killers" is ambiguous between The Killers and Killers, in Qloo's order.
   const literalKey = allWords(input).join(" ");
-  const literally = found.filter((e) => allWords(e.name).join(" ") === literalKey);
-  const spaced = literally.length ? literally : found.filter((e) => nameKey(e.name) === nameKey(input));
+  const literally = article(input, allWords(input)) ? found.filter((e) => allWords(e.name).join(" ") === literalKey) : [];
+  const spaced = [...literally, ...found.filter((e) => nameKey(e.name) === nameKey(input) && !literally.includes(e))];
   const initials = (x: string) => words(x).some((w) => w.length === 1);
   const same = (e: Entity) => squashed(e.name) === squashed(input);
   const exact = spaced.length ? spaced : found.filter((e) => (initials(input) || initials(e.name)) && same(e));
@@ -334,14 +336,15 @@ export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | 
     return nw.length !== typedWords.length || nw.every((w, i) => w === typedWords[i] || Math.min(w.length, typedWords[i].length) >= 3);
   };
   const closeness = (e: Entity) => share(typedWords, words(e.name)) + share(words(e.name), typedWords);
-  // A name held only after a leading article ranks below one letter off: "The Monkeys" is The Monkees, not The
-  // Mighty Monkeys.
-  const anyWhole = found.some(whole);
+  // A name held only after a leading article ranks below one letter off that also leads with it: "The Monkeys"
+  // is The Monkees, not The Mighty Monkeys; but "The Stones" is The Rolling Stones, not Stone.
+  const anyWhole = found.some((e) => whole(e) && allWords(e.name)[0] === typedArticle);
   const score = (e: Entity) => (exact.includes(e) || same(e) ? 100 : (literal(e) ? 30 : whole(e) ? 20 : leading(e) ? (anyWhole ? 10 : 30) : 0) + closeness(e));
   const near = (e: Entity) => sure(e) || whole(e) || (share(typedWords, words(e.name)) >= 0.5 && share(words(e.name), typedWords) >= 0.5);
   const list = found.filter(near).map((e, i) => ({ e, i, s: score(e) })).sort((x, y) => y.s - x.s || x.i - y.i).map((x) => x.e);
   if (!list.length) return null;
-  const offered = (e: Entity) => sure(e) || share(typedWords, words(e.name)) > 0.5;
+  // Not it? doesn't offer a mere plural ("Kiss" isn't offered Kisses).
+  const offered = (e: Entity) => sure(e) || share(typedWords, words(e.name), false) > 0.5;
   const pick = exact[0] ?? list[0];
   return {
     input,

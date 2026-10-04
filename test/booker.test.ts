@@ -626,5 +626,7 @@ test("artists: near names are ranked by closeness, and Not it? offers only close
   }
   assert.equal(await resolveArtist(fake(["Dex"]), "Dax"), null);
   const sun = await resolveArtist(fake(["Sun", "Suns", "The Suns of Light"]), "Sun");
-  assert.deepEqual(sun!.alternatives.map((a) => a.name), ["Suns"], "a plural of the same length is offered, a longer name isn't");
+  assert.deepEqual(sun!.alternatives.map((a) => a.name), [], "Not it? doesn't offer a plural of an exact name");
+  const kiss = await resolveArtist(fake(["Kiss", "Kisses", "The Who", "The Whos"]), "Kiss");
+  assert.deepEqual(kiss!.alternatives.map((a) => a.name), []);
 });
