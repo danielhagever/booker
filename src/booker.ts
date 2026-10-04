@@ -126,7 +126,8 @@ const twice = (same: string[]) => (same.length ? `; the same act named twice: ${
 // "Portland, Maine", "Berlin, Germany"; a US or Canadian city with its state or province).
 export function cityOf(e: Entity): string | undefined {
   if (!e.city) return undefined;
-  const region = e.countryCode === "US" || e.countryCode === "CA" ? e.region : e.country;
+  // UK places with their nation: Qloo reads "Bangor, Wales" right and "Bangor, United Kingdom" as Northern Ireland.
+  const region = e.countryCode === "US" || e.countryCode === "CA" || (e.countryCode === "GB" && e.region) ? e.region : e.country;
   return region ? `${e.city}, ${region}` : e.city;
 }
 

@@ -118,7 +118,7 @@ function spellings(name: string): string[] {
 }
 
 export async function cityCenter(cache: KVNamespace, budget: Budget, city: string): Promise<Place | null> {
-  const key = `city9:${city.toLowerCase()}`;
+  const key = `city10:${city.toLowerCase()}`;
   const hit = await kvGet(cache, budget, key);
   if (hit) return hit as Place;
   const typed = (ALIASES[fold(city)] ?? city).replace(/[\u2018\u2019]/g, "'");
@@ -193,8 +193,11 @@ export async function cityCenter(cache: KVNamespace, budget: Budget, city: strin
   // "New York, New York" as the city (measured).
   // A few records carry no country name (Puerto Rico, Hong Kong): the code names it.
   const NO_COUNTRY: Record<string, string> = { PR: "Puerto Rico", HK: "Hong Kong", MO: "Macau" };
-  const region = r.country_code === "US" || r.country_code === "CA" ? r.admin1 : (r.country ?? NO_COUNTRY[r.country_code] ?? r.admin1);
-  const label = `${r.name}${region ? ", " + region : ""}`;
+  // UK cities with their nation: Qloo reads "Bangor, United Kingdom" as Bangor in Northern Ireland and
+  // "Bangor, Wales" right (measured). Québec with "City": "Québec, Quebec" is the province to Qloo.
+  const region = r.country_code === "US" || r.country_code === "CA" || (r.country_code === "GB" && r.admin1) ? r.admin1 : (r.country ?? NO_COUNTRY[r.country_code] ?? r.admin1);
+  const cityName = r.country_code === "CA" && fold(r.name) === fold(r.admin1) ? `${r.name} City` : r.name;
+  const label = `${cityName}${region ? ", " + region : ""}`;
   const typedRegion = rest.filter(Boolean).join(", ");
   const out: Place = { lat: r.latitude, lon: r.longitude, name: label, query: label, ...(typedRegion && !matches.length ? { unmatched: typedRegion } : {}) };
   await kvPut(cache, budget, key, out, 60 * 60 * 24 * 30);

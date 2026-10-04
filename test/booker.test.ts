@@ -237,7 +237,7 @@ test("helpers: resemblance, names without 'the', music rooms, city spelling, lis
   assert.ok(isRoom({ id: "x", name: "x", types: [], categories: ["Bar", "Live music venue"] }));
   assert.ok(!isRoom({ id: "x", name: "x", types: [], categories: ["Record store"] }));
   assert.equal(cityOf({ id: "x", name: "x", types: [], city: "Chicago", region: "Illinois", countryCode: "US", country: "United States" }), "Chicago, Illinois");
-  assert.equal(cityOf({ id: "x", name: "x", types: [], city: "London", region: "England", countryCode: "GB", country: "United Kingdom" }), "London, United Kingdom");
+  assert.equal(cityOf({ id: "x", name: "x", types: [], city: "London", region: "England", countryCode: "GB", country: "United Kingdom" }), "London, England");
   assert.deepEqual(names("Simon and Garfunkel, Hovvdy, hovvdy, Dehd", 8).list.map((n) => n.name), ["Simon and Garfunkel", "Hovvdy", "Dehd"]);
   assert.deepEqual(names('"Tyler, the Creator", \u201cBlack Country, New Road\u201d; Wet Leg\nBlack Pumas, Shakey Graves', 8).list.map((n) => n.name), ["Tyler, the Creator", "Black Country, New Road", "Wet Leg", "Black Pumas", "Shakey Graves"]);
   assert.deepEqual(names("\u201eTyler, the Creator\u201c, \u00abBlack Country, New Road\u00bb, Wet Leg", 8).list.map((n) => n.name), ["Tyler, the Creator", "Black Country, New Road", "Wet Leg"]);
@@ -521,7 +521,7 @@ test("city lookup: towns over islands, province and state codes worldwide, and e
     };
     for (const [typed, want] of [
       ["Vancouver", "Vancouver, British Columbia"], ["Vancouver, BC", "Vancouver, British Columbia"], ["Vancouver, Canada", "Vancouver, British Columbia"],
-      ["London, ON", "London, Ontario"], ["London", "London, United Kingdom"], ["Toronto, ON", "Toronto, Ontario"],
+      ["London, ON", "London, Ontario"], ["London", "London, England"], ["Toronto, ON", "Toronto, Ontario"],
       ["Portland, ME, USA", "Portland, Maine"], ["Portland, Maine", "Portland, Maine"], ["Austin, TX, USA", "Austin, Texas"],
       ["Melbourne, VIC", "Melbourne, Australia"], ["Perth, WA", "Perth, Australia"], ["Chicago, Austin", "Chicago, Illinois [unmatched Austin]"],
     ]) assert.equal(await at(typed), want, typed);

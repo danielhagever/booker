@@ -341,7 +341,7 @@ null
 ],
 [
 "Birmingham",
-"Birmingham, United Kingdom",
+"Birmingham, England",
 null
 ],
 [
@@ -351,12 +351,12 @@ null
 ],
 [
 "Birmingham, UK",
-"Birmingham, United Kingdom",
+"Birmingham, England",
 null
 ],
 [
 "Cambridge",
-"Cambridge, United Kingdom",
+"Cambridge, England",
 null
 ],
 [
@@ -366,12 +366,12 @@ null
 ],
 [
 "Cambridge, UK",
-"Cambridge, United Kingdom",
+"Cambridge, England",
 null
 ],
 [
 "Cambridge, England",
-"Cambridge, United Kingdom",
+"Cambridge, England",
 null
 ],
 [
@@ -426,7 +426,7 @@ null
 ],
 [
 "London",
-"London, United Kingdom",
+"London, England",
 null
 ],
 [
@@ -446,12 +446,12 @@ null
 ],
 [
 "London, UK",
-"London, United Kingdom",
+"London, England",
 null
 ],
 [
 "London, England",
-"London, United Kingdom",
+"London, England",
 null
 ],
 [
@@ -461,17 +461,17 @@ null
 ],
 [
 "Manchester",
-"Manchester, United Kingdom",
+"Manchester, England",
 null
 ],
 [
 "Manchester, UK",
-"Manchester, United Kingdom",
+"Manchester, England",
 null
 ],
 [
 "Manchester, England",
-"Manchester, United Kingdom",
+"Manchester, England",
 null
 ],
 [
@@ -481,12 +481,12 @@ null
 ],
 [
 "Newcastle, UK",
-"Newcastle, United Kingdom",
+"Newcastle, Northern Ireland",
 null
 ],
 [
 "Newcastle upon Tyne",
-"Newcastle upon Tyne, United Kingdom",
+"Newcastle upon Tyne, England",
 null
 ],
 [
@@ -601,12 +601,12 @@ null
 ],
 [
 "Quebec City",
-"Québec, Quebec",
+"Québec City, Quebec",
 null
 ],
 [
 "Québec, QC",
-"Québec, Quebec",
+"Québec City, Quebec",
 null
 ],
 [
@@ -626,82 +626,82 @@ null
 ],
 [
 "Glasgow",
-"Glasgow, United Kingdom",
+"Glasgow, Scotland",
 null
 ],
 [
 "Glasgow, Scotland",
-"Glasgow, United Kingdom",
+"Glasgow, Scotland",
 null
 ],
 [
 "Edinburgh",
-"Edinburgh, United Kingdom",
+"Edinburgh, Scotland",
 null
 ],
 [
 "Bristol",
-"Bristol, United Kingdom",
+"Bristol, England",
 null
 ],
 [
 "Bristol, UK",
-"Bristol, United Kingdom",
+"Bristol, England",
 null
 ],
 [
 "Leeds",
-"Leeds, United Kingdom",
+"Leeds, England",
 null
 ],
 [
 "Liverpool",
-"Liverpool, United Kingdom",
+"Liverpool, England",
 null
 ],
 [
 "Brighton",
-"Brighton, United Kingdom",
+"Brighton, England",
 null
 ],
 [
 "Brighton, UK",
-"Brighton, United Kingdom",
+"Brighton, England",
 null
 ],
 [
 "Nottingham",
-"Nottingham, United Kingdom",
+"Nottingham, England",
 null
 ],
 [
 "Sheffield",
-"Sheffield, United Kingdom",
+"Sheffield, England",
 null
 ],
 [
 "Cardiff",
-"Cardiff, United Kingdom",
+"Cardiff, Wales",
 null
 ],
 [
 "Cardiff, Wales",
-"Cardiff, United Kingdom",
+"Cardiff, Wales",
 null
 ],
 [
 "Belfast",
-"Belfast, United Kingdom",
+"Belfast, Northern Ireland",
 null
 ],
 [
 "Belfast, Northern Ireland",
-"Belfast, United Kingdom",
+"Belfast, Northern Ireland",
 null
 ],
 [
 "Oxford",
-"Oxford, United Kingdom",
+"Oxford, England",
 null
 ],
 [
@@ -931,7 +931,7 @@ null
 ],
 [
 "Perth, Scotland",
-"Perth, United Kingdom",
+"Perth, Scotland",
 null
 ],
 [
@@ -1271,7 +1271,7 @@ null
 ],
 [
 "London UK",
-"London, United Kingdom",
+"London, England",
 null
 ],
 [
@@ -1331,32 +1331,32 @@ null
 ],
 [
 "Newcastle upon Tyne, UK",
-"Newcastle upon Tyne, United Kingdom",
+"Newcastle upon Tyne, England",
 null
 ],
 [
 "Hull, UK",
-"Hull, United Kingdom",
+"Hull, England",
 null
 ],
 [
 "Kingston upon Thames",
-"Kingston upon Thames, United Kingdom",
+"Kingston upon Thames, England",
 null
 ],
 [
 "York, UK",
-"York, United Kingdom",
+"York, England",
 null
 ],
 [
 "Aberdeen, Scotland",
-"Aberdeen, United Kingdom",
+"Aberdeen, Scotland",
 null
 ],
 [
 "Derry",
-"Londonderry, United Kingdom",
+"Londonderry, Northern Ireland",
 null
 ],
 [
@@ -1406,7 +1406,7 @@ null
 ],
 [
 "Isle of Wight",
-"Isle of Wight, United Kingdom",
+"Isle of Wight, England",
 null
 ],
 [
@@ -1551,12 +1551,12 @@ null
 ],
 [
 "Bangor, Wales",
-"Bangor, United Kingdom",
+"Bangor, Wales",
 null
 ],
 [
 "Swansea, Wales",
-"Swansea, United Kingdom",
+"Swansea, Wales",
 null
 ],
 [
@@ -1621,7 +1621,7 @@ null
 ],
 [
 "London England",
-"London, United Kingdom",
+"London, England",
 null
 ],
 [
@@ -1791,7 +1791,7 @@ null
 ],
 [
 "Belfast Northern Ireland",
-"Belfast, United Kingdom",
+"Belfast, Northern Ireland",
 null
 ],
 [
@@ -1851,12 +1851,12 @@ null
 ],
 [
 "St. Andrews, Scotland",
-"St Andrews, United Kingdom",
+"St Andrews, Scotland",
 null
 ],
 [
 "St. Andrews, UK",
-"St Andrews, United Kingdom",
+"St Andrews, Scotland",
 null
 ],
 [
@@ -1871,17 +1871,17 @@ null
 ],
 [
 "St. Austell, UK",
-"St Austell, United Kingdom",
+"St Austell, England",
 null
 ],
 [
 "Quebec City, QC",
-"Québec, Quebec",
+"Québec City, Quebec",
 null
 ],
 [
 "Quebec City, Canada",
-"Québec, Quebec",
+"Québec City, Quebec",
 null
 ],
 [
@@ -1906,7 +1906,7 @@ null
 ],
 [
 "Bangor, Northern Ireland",
-"Bangor, United Kingdom",
+"Bangor, Northern Ireland",
 null
 ],
 [
