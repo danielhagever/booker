@@ -206,11 +206,10 @@ const PLACE_ABBR: Record<string, string[]> = {
   n: ["north", "northern"], no: ["north"], s: ["south", "southern"], so: ["south"], e: ["east", "eastern"], w: ["west", "western"],
   mt: ["mount"], ft: ["fort"], st: ["saint"], ste: ["sainte"],
 };
-// "IN" before a zip code or a country is Indiana ("Broad Ripple, IN 46220, USA").
+// (In chooseVenue, "IN" that opens a part after a comma, or comes before an Indiana zip, is the state:
+// "Broad Ripple, IN 46220"; "in USA" and "in 37215" still connect.)
 const ZIP = /^\d{5}(\d{4})?$/;
-const COUNTRY_AFTER = new Set(["us", "usa", "united", "america", "canada", "uk", "gb"]);
-const fillerAt = (rest: string[], i: number) =>
-  ZIP.test(rest[i]) || ((rest[i] === "in" || rest[i] === "at" || rest[i] === "the") && i < rest.length - 1 && !ZIP.test(rest[i + 1]) && !COUNTRY_AFTER.has(rest[i + 1]));
+const fillerAt = (rest: string[], i: number) => ZIP.test(rest[i]) || ((rest[i] === "in" || rest[i] === "at" || rest[i] === "the") && i < rest.length - 1);
 
 // The rest of the typed words after the candidate's name, if its name opens them (compared without spaces).
 function afterName(typed: string[], name: string[]): string[] | null {
@@ -243,7 +242,12 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
   const anyPlace = new Set(found.flatMap((e) => [...locationOf(e).all]));
   const content = (ws: string[]) => ws.filter((w) => !anyPlace.has(w) && !GENERIC.has(w));
   const typedContent = content(typed);
-  const place = (rest: string[]) => rest.filter((_, i) => !fillerAt(rest, i));
+  const filler = (rest: string[], i: number) => {
+    const at = typed.length - rest.length + i; // rest is always the end of what was typed
+    if (rest[i] === "in" && (commaAt.has(at) || /^4[67]\d{3}$/.test(rest[i + 1] ?? ""))) return false;
+    return fillerAt(rest, i);
+  };
+  const place = (rest: string[]) => rest.filter((_, i) => !filler(rest, i));
 
   // 1. How each candidate's name matches: in full, or without its generic ending; and what was typed after it.
   const matched = found.map((e, order) => {
@@ -340,7 +344,7 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
       // Saint Helena).
       const base = typed.length - rest.length;
       const typedIn = (ph: string[]) =>
-        rest.some((_, j) => ph.every((w, m) => { const t = rest[j + m]; return t !== undefined && (!fillerAt(rest, j + m) || (ph.length > 1 && t === w)) && (t === w || PLACE_ABBR[t]?.includes(w)) && (m === 0 || !commaAt.has(base + j + m)); }));
+        rest.some((_, j) => ph.every((w, m) => { const t = rest[j + m]; return t !== undefined && (!filler(rest, j + m) || (ph.length > 1 && t === w)) && (t === w || PLACE_ABBR[t]?.includes(w)) && (m === 0 || !commaAt.has(base + j + m)); }));
       // How far a typed word is from the room's place. Its own city (words of four letters or more): 1 when cut off
       // ("Phila", "ATL", "Det", also before a neighborhood) or one letter off in a word of four letters or more
       // ("Pual", "Rneo"; "End" isn't Bend). Its other place words of four letters or more: its state, the big city
