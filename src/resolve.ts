@@ -27,17 +27,22 @@ const FOLD: Record<string, string> = { "\u00f8": "o", "\u00e6": "ae", "\u0153": 
 // Accents are folded ("Beyonce" is Beyoncé); apostrophes, colons and dots join ("Cat's" is "Cats", "9:30"
 // is "930"); other punctuation separates words.
 const SPELLING: Record<string, string> = { theater: "theatre", amphitheater: "amphitheatre", centre: "center" };
-const words = (s: string) => {
-  const ws = normalizeName(s)
+// Letters written as signs read as letters: P!nk is Pink, Ke$ha is Kesha, $uicideboy$ is Suicideboys.
+const allWords = (s: string) =>
+  normalizeName(s)
     .normalize("NFKD")
     .replace(/\p{M}/gu, "")
     .replace(/[\u00f8\u00e6\u0153\u00df\u0142\u0111\u00fe]/g, (c) => FOLD[c])
+    .replace(/(?<=\p{L})!(?=\p{L})/gu, "i")
+    .replace(/\$(?=\p{L})|(?<=\p{L})\$/gu, "s")
     .replace(/[&+]/g, " and ") // "Florence + the Machine", "Simon & Garfunkel"
     .replace(/['\u2018\u2019`:.]/g, "")
     .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .split(/\s+/)
     .filter(Boolean)
     .map((w) => SPELLING[w] ?? w);
+const words = (s: string) => {
+  const ws = allWords(s);
   return ws.length > 1 && ARTICLES.has(ws[0]) ? ws.slice(1) : ws;
 };
 // "The Empty Bottle" and "Empty Bottle" are the same name; so are "Snail Mail" and "snail mail".
@@ -65,10 +70,14 @@ export function resembles(typed: string, name: string): boolean {
 
 // Small words don't make two names alike ("of", "the", "and", "de", "la").
 const SMALL = new Set(["of", "the", "and", "a", "an", "de", "la", "le", "el", "los", "las", "y", "et", "und", "der", "die", "das", "du", "des", "n"]);
-// Words written two ways count as close, not equal ("Hank Williams 3" is close to Hank Williams III), so that
-// initials still compare without spaces ("J. R. Writer" is J.R. Writer).
-const TWIN: Record<string, string> = { "2": "ii", "3": "iii", "4": "iv", jr: "junior" };
-const closeTo = (w: string, b: string[]) => b.some((x) => x === w || TWIN[w] === x || TWIN[x] === w || typoDistance(w, x) <= (w.length > 5 ? 2 : w.length > 3 ? 1 : 0));
+// Words written two ways count as close, not equal ("Hank Williams 3" is close to Hank Williams III, "Maroon
+// Five" to Maroon 5), so that initials still compare without spaces ("J. R. Writer" is J.R. Writer); so does a
+// plural of a short word ("Fleet Fox" is Fleet Foxes).
+const TWINS = [["1", "one"], ["2", "ii", "two"], ["3", "iii", "three"], ["4", "iv", "four"], ["5", "five"], ["6", "six"], ["7", "seven"], ["8", "eight"], ["9", "nine"], ["10", "ten"], ["20", "twenty"], ["jr", "junior"]];
+const TWIN = new Map(TWINS.flatMap((g, i) => g.map((w) => [w, i] as const)));
+const twins = (a: string, b: string) => TWIN.has(a) && TWIN.get(a) === TWIN.get(b);
+const plural = (a: string, b: string) => b === `${a}s` || b === `${a}es` || a === `${b}s` || a === `${b}es`;
+const closeTo = (w: string, b: string[]) => b.some((x) => x === w || twins(w, x) || plural(w, x) || typoDistance(w, x) <= (w.length > 5 ? 2 : w.length > 3 ? 1 : 0));
 // The share of a's words, small words aside, that are close to some word of b.
 function share(a: string[], b: string[]): number {
   const keep = (ws: string[]) => (ws.some((w) => !SMALL.has(w)) ? ws.filter((w) => !SMALL.has(w)) : ws);
@@ -292,16 +301,23 @@ export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | 
   // not Tom Waits). "Not it?" offers only names closer than that: most of what was typed ("Big Thief" isn't
   // offered Big Sean; "Horse Jumper of Love" isn't offered Love of Lesbian).
   const typedWords = words(input);
-  const inside = (e: Entity) => ` ${words(e.name).join(" ")} `.includes(` ${typedWords.join(" ")} `);
+  // Typed with its article, the name must hold the article too ("The Weekend" isn't inside Vampire Weekend).
+  const typedAll = allWords(input).join(" ");
+  const inside = (e: Entity) => ` ${allWords(e.name).join(" ")} `.includes(` ${typedAll} `);
   const part = (e: Entity) => { const n = words(e.name); return ` ${typedWords.join(" ")} `.includes(` ${n.join(" ")} `) && n.length * 2 >= typedWords.length; };
   const sure = (e: Entity) => exact.includes(e) || same(e) || inside(e) || part(e);
   // Near names rank in three tiers. A name holding everything typed comes first ("Mavis" is Mavis Staples,
   // not The Mavis's; "Margo" is Margo Price, not Margot); then a whole name one letter off ("Future Island"
   // is Future Islands, not Future; "De La Sol" is De La Soul, whose short words must otherwise match
-  // exactly), word for word (Hank Williams isn't one letter off "Hank Williams 3"); then the rest by
-  // closeness. A name held whole by what was typed gets no tier of its own.
+  // exactly; "Boy Genious" is boygenius); then the rest by closeness. Not one letter off: a name held whole by
+  // what was typed (Hank Williams for "Hank Williams 3"), or a word of one or two letters swapped (Hank
+  // Williams Jr. for "Hank Williams Sr.", Chapter 8 for "Chapter 4").
   const typedWhole = squashed(input);
-  const whole = (e: Entity) => { const n = squashed(e.name); return words(e.name).length === typedWords.length && Math.min(n.length, typedWhole.length) >= 5 && typoDistance(n, typedWhole) <= 1; };
+  const whole = (e: Entity) => {
+    const n = squashed(e.name), nw = words(e.name);
+    if (Math.min(n.length, typedWhole.length) < 5 || typoDistance(n, typedWhole) > 1 || part(e)) return false;
+    return nw.length !== typedWords.length || nw.every((w, i) => w === typedWords[i] || Math.min(w.length, typedWords[i].length) >= 3);
+  };
   const closeness = (e: Entity) => share(typedWords, words(e.name)) + share(words(e.name), typedWords);
   const score = (e: Entity) => (exact.includes(e) || same(e) ? 9 : (inside(e) ? 6 : whole(e) ? 3 : 0) + closeness(e));
   const near = (e: Entity) => sure(e) || whole(e) || (share(typedWords, words(e.name)) >= 0.5 && share(words(e.name), typedWords) >= 0.5);

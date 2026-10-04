@@ -1,4 +1,4 @@
-// 294 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
+// 312 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
 // the answer a reasonable person expects. Built by an independent review that ran them through ten versions
 // of the matcher; every one of these was right in at least one version, and all are right now.
 export default async function ({ place, art, runVenue, runArtist, runSplit, is, starts, eqList }) {
@@ -246,6 +246,25 @@ export default async function ({ place, art, runVenue, runArtist, runSplit, is, 
   await runArtist("J.R. Writer", A(["Writer", "J. R. Writer"], "Hip hop"), aIs("J. R. Writer", "exact"));
   await runArtist("J. R. Rotem", A(["J.R. Rotem"], "Hip hop"), aIs("J.R. Rotem", "exact"));
   await runArtist("JRJR", A(["JR JR"]), aIs("JR JR", "exact", "closest"));
+  // Pass 33 (2026-10-04)
+  await runArtist("The Weekend", A(["The Weeknd", "Vampire Weekend"], "R&B"), aIs("The Weeknd", "closest"));
+  await runArtist("The Weekend", A(["The Weeknd", "Weekend Players", "Vampire Weekend", "The Weekenders"], "R&B"), aIs("The Weeknd", "closest"));
+  await runArtist("The Killer", A(["The Killers", "Killer Mike"]), aIs("The Killers", "closest"));
+  await runArtist("Hank Williams Sr.", A(["Hank Williams", "Hank Williams Jr.", "Hank Williams III"], "Country"), aIs("Hank Williams", "closest"));
+  await runArtist("Hank Williams Sr.", A(["Hank Williams Jr.", "Hank Williams III", "Hank Williams"], "Country"), aIs("Hank Williams", "closest"));
+  await runArtist("Sammy Davis Sr", A(["Sammy Davis Jr.", "Sammy Davis"], "Jazz"), aIs("Sammy Davis", "closest"));
+  await runArtist("Boy Genious", A(["boygenius", "Genius"]), aIs("boygenius", "closest"));
+  await runArtist("Nickle Back", A(["Nickelback"], "Rock"), aIs("Nickelback", "closest"));
+  await runArtist("LCD Sound Sytem", A(["LCD Soundsystem"]), aIs("LCD Soundsystem", "closest"));
+  await runArtist("Pink", A(["P!nk", "Pink Floyd", "Pink Martini"], "Pop"), aIs("P!nk", "exact"));
+  await runArtist("Kesha", A(["Ke$ha", "Kesha Rose"], "Pop"), aIs("Ke$ha", "exact"));
+  await runArtist("Suicideboys", A(["$uicideboy$"], "Hip hop"), aIs("$uicideboy$", "exact", "closest"));
+  await runArtist("Panic at the Disco", A(["Panic! At The Disco"], "Rock"), aIs("Panic! At The Disco", "exact"));
+  await runArtist("Maroon Five", A(["Maroon 5", "Maroon"], "Pop"), aIs("Maroon 5", "closest"));
+  await runArtist("Fleet Fox", A(["Fleet Foxes", "Fleetwood Mac", "Fox"]), aIs("Fleet Foxes", "closest"));
+  await runArtist("Matchbox 20", A(["Matchbox Romance", "Matchbox Twenty"], "Rock"), aIs("Matchbox Twenty", "closest"));
+  await runArtist("Three Doors Down", A(["3 Doors Down", "Doors"], "Rock"), aIs("3 Doors Down", "closest"));
+  await runArtist("Chapter 4", A(["Chapter 8", "Chapter IV"]), (o) => !o.startsWith("Chapter 8"), "a different number isn't a typo");
   await runArtist("Bea", A(["Beach House"]), is("none"));
   await runArtist("Tyler the Creator", A(["Tyler, The Creator", "Tyler Childers"]), aIs("Tyler, The Creator", "exact"));
   await runArtist("Simon and Garfunkel", A(["Simon & Garfunkel"]), aIs("Simon & Garfunkel", "exact"));
