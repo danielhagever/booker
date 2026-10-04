@@ -170,7 +170,9 @@ const dropStart = (ws: string[], drop: (w: string) => boolean) => {
 };
 
 // Where a candidate is, as words a person might type after its name. `aliases` name its city too.
-function locationOf(e: Entity): { all: Set<string>; city: string[]; aliases: string[] } {
+// `places` are its places as whole phrases (city, state, codes, nicknames, the big city next door) and `countries`
+// its country's names and codes, for telling when a place was typed in full ("Mexico City", not just "Mexico").
+function locationOf(e: Entity): { all: Set<string>; city: string[]; aliases: string[]; places: string[][]; countries: string[][] } {
   const city = words(e.city ?? "");
   const region = words(e.region ?? "");
   const all = new Set([...city, ...region, ...words(e.country ?? "")]);
@@ -191,7 +193,11 @@ function locationOf(e: Entity): { all: Set<string>; city: string[]; aliases: str
   const core = us ? NEXT_TO.get(`${city.join(" ")}|${region.join(" ")}`) : undefined;
   if (core) [...words(core), ...(CITY_ALIASES[core] ?? [])].forEach((w) => all.add(w));
   if (city.length) all.add("city"); // "New York City", "Mexico City"
-  return { all, city, aliases };
+  const one = (w?: string) => (w ? [[w]] : []);
+  const places = [city, region, ...one(code), ...one(ap), ...aliases.map((a) => [a]), ...one(e.countryCode === "AU" ? AU_STATES[region.join(" ")] : undefined),
+    ...(core ? [words(core), ...(CITY_ALIASES[core] ?? []).map((a) => [a])] : [])].filter((p) => p.length);
+  const countries = [words(e.country ?? ""), ...(e.countryCode === "US" ? [["us"], ["usa"]] : e.countryCode === "GB" ? [["uk"]] : e.countryCode && !us ? [[e.countryCode.toLowerCase()]] : [])].filter((p) => p.length);
+  return { all, city, aliases, places, countries };
 }
 // Words after a name that say nothing either way: a zip code, and "in" or "at" before the place ("House of
 // Blues in Chicago"; a final "IN" is Indiana). Other numbers can be part of a name (Stage 48, Terminal 5).
@@ -307,23 +313,27 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
       // letters or more or a misspelling counts too ("Brooklyn Bowl Phila", "City Winery ATL", "House of Blues
       // Hueston", "Billy Bob's Texs"), as goesOn's closeness ("LA" isn't cut-off Las Vegas); one letter off before
       // two ("Huston" is Houston, not Boston).
-      const said = place(rest).filter((w) => w !== "city");
+      const placed = place(rest);
+      const said = placed.filter((w) => w !== "city");
+      // A place typed in full, all its words: the room's own ("Mexico City", "Northern Ireland") or its country.
+      const typedIn = (ph: string[]) => ph.every((w) => placed.includes(w));
       // How far a typed word is from the room's place. Its own city (words of four letters or more): 1 when cut off
       // ("Phila", "ATL", "Det", also before a neighborhood) or one letter off in a word of four letters or more
       // ("Pual", "Rneo"; "End" isn't Bend). Its other place words of four letters or more: its state, the big city
       // next door, a nickname: 1 when it's the last word typed and opens one ("Bos", "Wisc", "Cali"; "Penn Quarter"
       // isn't Pennsylvania) or one letter off where either word has five letters or more ("Phily", "Renno"; "NoDa"
-      // isn't NOLA); its country only as the last word typed ("Can", "Austrailia"; "State St" isn't "States"). For
-      // any, 2 when two letters off in a word of six letters or more ("Hueston"; "East", "Soho", "Park" aren't
-      // Mass, Ohio, York). Else too far.
+      // isn't NOLA). For either, 2 when two letters off in a word of six letters or more ("Hueston"; "East",
+      // "Soho", "Park" aren't Mass, Ohio, York); 3 when it's one word of a longer place ("Mexico" of New Mexico,
+      // "Ireland" of Northern Ireland). Else too far.
       const cityWords = loc.city.filter((p) => p.length >= 4);
-      const country = new Set(words(e.country ?? ""));
+      const country = new Set(loc.countries.flat());
       const others = [...loc.all].filter((p) => p !== "city" && p.length >= 4 && !country.has(p) && !cityWords.includes(p));
       const countryWords = [...country].filter((p) => p.length >= 4);
       const off = (w: string, i: number) => {
         if (w.length < 3) return 9;
         const last = i === said.length - 1;
         const near = (p: string, cutAnywhere: boolean, short: boolean) => {
+          if (w === p) return 3;
           if ((cutAnywhere || last) && p.startsWith(w)) return 1;
           const d = typoDistance(w, p);
           return d <= 1 && (short ? w.length >= 4 : Math.max(w.length, p.length) >= 5) ? d : d === 2 && w.length >= 6 ? 2 : 9;
@@ -332,12 +342,13 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
       };
       // A country, exact or as the last word cut off or one letter off ("Aus", "Austrailia"; never two letters off:
       // "Island" isn't Ireland), only tells rooms of different countries apart: after any sign of the room's own
-      // city or state ("State Theatre, Syd, Aus" is Sydney, not Melbourne; "Paramount Theatre, Aus" Austin first).
+      // city or state ("State Theatre, Syd, Aus" or "Syd, AU" is Sydney, not Melbourne; "Paramount Theatre, Aus"
+      // Austin first). (A room in another country never gets here: the country typed is another room's place.)
       const countryNear = (w: string, i: number) =>
         i === said.length - 1 && w.length >= 3 && countryWords.some((p) => p.startsWith(w) || (typoDistance(w, p) <= 1 && Math.max(w.length, p.length) >= 5));
       const nearest = Math.min(9, ...said.map((w, i) => off(w, i)));
-      const tierHere = said.some((w) => loc.all.has(w) && !country.has(w)) ? 6.3 : nearest <= 2 ? 6.3 + nearest / 10
-        : said.some((w) => country.has(w)) ? 6.53 : said.some(countryNear) ? 6.56 : 6.6;
+      const tierHere = loc.places.some(typedIn) ? 6.3 : nearest === 1 ? 6.4 : nearest === 2 ? 6.5
+        : loc.countries.some(typedIn) ? 6.53 : nearest === 3 ? 6.55 : said.some(countryNear) ? 6.56 : 6.6;
       opens = opens ? Math.min(opens, tierHere) : tierHere;
     }
     return { e, order, inCity, full, bare, bareAnywhere, elsewhere, longerOwn, longerOther, opens, closeness, resembles: wordsResemble(typedContent, near, false), music };
@@ -362,8 +373,8 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
       : m.full ? 4
       : m.bare ? 5
       : m.elsewhere ? 6
-      // 6.3 own place, 6.4 cut off or one letter off, 6.5 two letters off, 6.53 its country, 6.56 the country
-      // misspelled, 6.6 nothing of its place.
+      // 6.3 own place, 6.4 cut off or one letter off, 6.5 two letters off, 6.53 its country, 6.55 one word of a
+      // longer place, 6.56 the country misspelled, 6.6 nothing of its place.
       : m.opens ? m.opens
       : m.resembles ? 7
       : 9;

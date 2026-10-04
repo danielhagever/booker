@@ -1,4 +1,4 @@
-// 432 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
+// 439 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
 // the answer a reasonable person expects. Built by an independent review that ran them through ten versions
 // of the matcher; every one of these was right in at least one version, and all are right now.
 export default async function ({ place, art, runVenue, runArtist, runSplit, is, starts, eqList }) {
@@ -495,6 +495,16 @@ export default async function ({ place, art, runVenue, runArtist, runSplit, is, 
   await runVenue("Capitol Theatre, Moncten, Can", [abroad("Capitol Theatre", "Windsor", "Ontario", "Canada", "CA"), abroad("Capitol Theatre", "Moncton", "New Brunswick", "Canada", "CA"), P("Capitol Theatre", "Port Chester", "New York")], notExactWrong("Capitol Theatre", "Moncton"));
   await runVenue("Paramount Theatre, Aus", [abroad("Paramount Theatre", "Melbourne", "Victoria", "Australia", "AU"), P("Paramount Theatre", "Austin", "Texas")], notExactWrong("Paramount Theatre", "Austin"), "Austin before Australia");
   await runVenue("The Paramount, Long Island", [P("The Paramount", "Huntington", "New York"), abroad("The Paramount", "Dublin", "Leinster", "Ireland", "IE")], notExactWrong("The Paramount", "Huntington"), "Island isn't Ireland");
+  // Pass 54: a place counts exactly only when all its words are typed; a country code is a country.
+  const elrey = () => [P("El Rey", "Albuquerque", "New Mexico"), abroad("El Rey", "Mexico City", "Mexico City", "Mexico", "MX")];
+  await runVenue("El Rey, Centro, Mexico City", elrey(), notExactWrong("El Rey", "Mexico City"));
+  await runVenue("El Rey, Condesa, Mexico", elrey(), notExactWrong("El Rey", "Mexico City"));
+  await runVenue("The Academy, Abbey St, Ireland", [uk("The Academy", "Belfast", "Northern Ireland"), abroad("The Academy", "Dublin", "Leinster", "Ireland", "IE")], notExactWrong("The Academy", "Dublin"), "Ireland isn't Northern Ireland");
+  await runVenue("State Theatre, Syd, AU", stt(), notExactWrong("State Theatre", "Sydney"));
+  const savoy = () => [abroad("Savoy Theatre", "Sydney", "Nova Scotia", "Canada", "CA"), abroad("Savoy Theatre", "Sydney", "New South Wales", "Australia", "AU")];
+  await runVenue("Savoy Theatre, Sydney, Australia", savoy(), (o) => o.startsWith("Savoy Theatre [Sydney]") && !o.includes("ambiguous"), "the country tells two Sydneys apart");
+  await runVenue("Savoy Theatre, Sydney, AU", savoy(), (o) => o.startsWith("Savoy Theatre [Sydney]") && !o.includes("ambiguous"));
+  await runVenue("The Fillmore, Phila, USA", [P("The Fillmore", "San Francisco", "California"), P("The Fillmore Philadelphia", "Philadelphia", "Pennsylvania")], notExactWrong("The Fillmore Philadelphia", "Philadelphia"));
   const bb = () => [P("Billy Bob's", "Gallatin", "Tennessee", ["Night club", "Live music venue"]), P("Billy Bob's Texas", "Fort Worth", "Texas", ["Night club", "Live music venue"])];
   await runVenue("Billy Bob's TX", bb(), exactIs("Billy Bob's Texas", "Fort Worth"), "a name that ends with its state");
   await runVenue("Billy Bob's, Fort Worth", bb(), exactIs("Billy Bob's Texas", "Fort Worth"));
