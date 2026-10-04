@@ -1,9 +1,10 @@
-// City lookup against 383 realistic ways people type tour cities (test/geo-cases.json), each with the
+// City lookup against 390 realistic ways people type tour cities (test/geo-cases.json), each with the
 // city it should land on and whether the answer should flag what followed the comma. The geocoder's real
 // answers were recorded once (test/geo-fixtures.json, trimmed), so this runs offline. Not included, because
 // Open-Meteo's answer doesn't hold the right place: Oahu, Big Island, Orange County, "Stoke, UK", "Kingston, UK",
 // "Newcastle, England" (no Newcastle upon Tyne under that name), "Saint Etienne, France" and "Saint Malo" (only
-// villages), "St Johns, NL"; and the ambiguous bare names Newcastle, Victoria, Hong Kong, St Andrews. Run: npm test
+// villages; also "St Malo, France", "St. Etienne, France", "St Quentin"), "St Johns, NL"; and the ambiguous bare
+// names Newcastle, Victoria, Hong Kong, St Andrews, Prince Edward Island. Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -16,7 +17,7 @@ const FIX: Record<string, unknown[]> = Object.fromEntries(
 );
 const CASES: [string, string, string | null][] = JSON.parse(readFileSync(new URL("./geo-cases.json", import.meta.url), "utf8"));
 
-test("city lookup: 383 realistic inputs land on the right city, and only real mismatches are flagged", async () => {
+test("city lookup: 390 realistic inputs land on the right city, and only real mismatches are flagged", async () => {
   const original = globalThis.fetch;
   const missing = new Set<string>();
   globalThis.fetch = (async (input: any) => {
@@ -42,6 +43,6 @@ test("city lookup: 383 realistic inputs land on the right city, and only real mi
     globalThis.fetch = original;
   }
   assert.deepEqual([...missing], [], "every geocoder call has a recorded answer");
-  assert.equal(CASES.length, 383);
+  assert.equal(CASES.length, 390);
   assert.deepEqual(wrong, []);
 });

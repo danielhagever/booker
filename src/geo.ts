@@ -62,6 +62,7 @@ async function kvPut(cache: KVNamespace, budget: Budget, key: string, value: unk
 const ALIASES: Record<string, string> = {
   dc: "Washington, DC", "washington dc": "Washington, DC", cdmx: "Mexico City", "ciudad de mexico": "Mexico City",
   "quebec city": "Quebec, QC", "tel aviv-yafo": "Tel Aviv", "tel aviv yafo": "Tel Aviv", bangalore: "Bengaluru", bombay: "Mumbai",
+  "st pete": "St. Petersburg, Florida",
 };
 // Newspaper (AP) state abbreviations, dots dropped ("Paris, Tex.", "Springfield, Ill.").
 const US_AP: Record<string, string> = {
@@ -118,19 +119,22 @@ function spellings(name: string): string[] {
 }
 
 export async function cityCenter(cache: KVNamespace, budget: Budget, city: string): Promise<Place | null> {
-  const key = `city10:${city.toLowerCase()}`;
+  const key = `city11:${city.toLowerCase()}`;
   const hit = await kvGet(cache, budget, key);
   if (hit) return hit as Place;
   const typed = (ALIASES[fold(city)] ?? city).replace(/[\u2018\u2019]/g, "'");
   let [name, ...rest] = typed.split(",").map((x) => x.trim());
   if (!name) return null;
-  // A nickname before the comma too: "Quebec City, QC", "Bangalore, India", "Washington DC, USA".
-  const alias = ALIASES[fold(name)];
-  if (alias) {
+  // A nickname before the comma too: "Quebec City, QC", "Bangalore, India", "Washington DC, USA" (and, below,
+  // before a region word without a comma: "Bangalore India").
+  const unalias = () => {
+    const alias = ALIASES[fold(name)];
+    if (!alias) return;
     const [aliasName, ...aliasRest] = alias.split(",").map((x) => x.trim());
     name = aliasName;
     if (!rest.filter(Boolean).length) rest = aliasRest;
-  }
+  };
+  unalias();
   let whole: any[] | undefined; // the answer for the whole name, when it was already asked for
   // Without a comma the state or country may close the text ("Austin TX", "Portland Maine", "London
   // England"), but a city's own name may end in one too ("New Britain", "Port Washington", "West New York"):
@@ -144,6 +148,7 @@ export async function cityCenter(cache: KVNamespace, budget: Budget, city: strin
         rest = [ws.slice(-k).join(" ")];
         name = ws.slice(0, -k).join(" ");
         whole = undefined;
+        unalias();
       }
     }
   }
@@ -160,7 +165,10 @@ export async function cityCenter(cache: KVNamespace, budget: Budget, city: strin
   for (const [i, n] of spellings(name).entries()) {
     const found = i === 0 && whole ? whole : await geocode(budget, n, "en");
     if (i === 0) exactTyped = found.some((r) => canon(r.name) === canon(n));
-    const keep = (r: any) => i === 0 || canon(r.name) === canon(n) || (!exactTyped && canon(r.name).startsWith(canon(n)));
+    // A longer name only as the same word going on ("St. Pete" -> "St. Petersburg"), not as more words
+    // ("St. Denis" isn't the village Saint-Denis-sur-Coise).
+    const longer = (r: any) => canon(r.name).startsWith(canon(n)) && /^[a-z]/.test(canon(r.name).slice(canon(n).length));
+    const keep = (r: any) => i === 0 || canon(r.name) === canon(n) || (!exactTyped && longer(r));
     for (const r of found) if (keep(r) && !seen.has(idOf(r))) (seen.add(idOf(r)), list.push(r));
   }
   // A city typed in Hebrew, Arabic or Cyrillic is only found in its own language; its English name
@@ -196,7 +204,7 @@ export async function cityCenter(cache: KVNamespace, budget: Budget, city: strin
   // UK cities with their nation: Qloo reads "Bangor, United Kingdom" as Bangor in Northern Ireland and
   // "Bangor, Wales" right (measured). Québec with "City": "Québec, Quebec" is the province to Qloo.
   const region = r.country_code === "US" || r.country_code === "CA" || (r.country_code === "GB" && r.admin1) ? r.admin1 : (r.country ?? NO_COUNTRY[r.country_code] ?? r.admin1);
-  const cityName = r.country_code === "CA" && fold(r.name) === fold(r.admin1) ? `${r.name} City` : r.name;
+  const cityName = r.country_code === "CA" && fold(r.name) === "quebec" && fold(r.admin1) === "quebec" ? `${r.name} City` : r.name;
   const label = `${cityName}${region ? ", " + region : ""}`;
   const typedRegion = rest.filter(Boolean).join(", ");
   const out: Place = { lat: r.latitude, lon: r.longitude, name: label, query: label, ...(typedRegion && !matches.length ? { unmatched: typedRegion } : {}) };
