@@ -309,23 +309,26 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
       // two ("Huston" is Houston, not Boston).
       const said = place(rest).filter((w) => w !== "city");
       // How far a typed word is from the room's place. Its own city (words of four letters or more): 1 when cut off
-      // ("Phila", "ATL", "Det", also before a neighborhood) or one letter off ("Pual", "Rneo"). Its other place
-      // words of four letters or more, not the country ("State St" isn't "States"): its state, the big city next
-      // door, a nickname: 1 when it's the last word typed and opens one ("Bos", "Wisc", "Cali"; "Penn Quarter"
+      // ("Phila", "ATL", "Det", also before a neighborhood) or one letter off in a word of four letters or more
+      // ("Pual", "Rneo"; "End" isn't Bend). Its other place words of four letters or more: its state, the big city
+      // next door, a nickname: 1 when it's the last word typed and opens one ("Bos", "Wisc", "Cali"; "Penn Quarter"
       // isn't Pennsylvania) or one letter off where either word has five letters or more ("Phily", "Renno"; "NoDa"
-      // isn't NOLA). For either, 2 when two letters off in a word of six letters or more ("Hueston"; "East",
-      // "Soho", "Park" aren't Mass, Ohio, York). Else too far.
+      // isn't NOLA); its country only as the last word typed ("Can", "Austrailia"; "State St" isn't "States"). For
+      // any, 2 when two letters off in a word of six letters or more ("Hueston"; "East", "Soho", "Park" aren't
+      // Mass, Ohio, York). Else too far.
       const cityWords = loc.city.filter((p) => p.length >= 4);
       const country = new Set(words(e.country ?? ""));
       const others = [...loc.all].filter((p) => p !== "city" && p.length >= 4 && !country.has(p) && !cityWords.includes(p));
+      const countryWords = [...country].filter((p) => p.length >= 4);
       const off = (w: string, i: number) => {
         if (w.length < 3) return 9;
+        const last = i === said.length - 1;
         const near = (p: string, cutAnywhere: boolean, short: boolean) => {
-          if ((cutAnywhere || i === said.length - 1) && p.startsWith(w)) return 1;
+          if ((cutAnywhere || last) && p.startsWith(w)) return 1;
           const d = typoDistance(w, p);
-          return d <= 1 && (short || Math.max(w.length, p.length) >= 5) ? d : d === 2 && w.length >= 6 ? 2 : 9;
+          return d <= 1 && (short ? w.length >= 4 : Math.max(w.length, p.length) >= 5) ? d : d === 2 && w.length >= 6 ? 2 : 9;
         };
-        return Math.min(9, ...cityWords.map((p) => near(p, true, true)), ...others.map((p) => near(p, false, false)));
+        return Math.min(9, ...cityWords.map((p) => near(p, true, true)), ...others.map((p) => near(p, false, false)), ...(last ? countryWords.map((p) => near(p, false, false)) : []));
       };
       const nearest = Math.min(9, ...said.map((w, i) => off(w, i)));
       opens = Math.max(opens, said.some((w) => loc.all.has(w)) ? 3 : nearest <= 2 ? 3 - nearest / 2 : 1);
