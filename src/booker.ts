@@ -148,15 +148,13 @@ export const sizeOf = (p: number) => -Math.log10(1 - Math.min(p, 0.99999));
 export const fromSize = (s: number) => 1 - 10 ** -s;
 const WIDEN = 0.1;
 
-// Qloo's rooms for an act (places tagged live music venue or concert hall) include, for bigger acts, museums,
-// galleries and other places whose main use isn't shows (live: Handel Hendrix House, Dulwich Picture Gallery,
-// a flea market for Phoebe Bridgers). Twelve are asked for; rooms filed as a music venue or bar, with no such
-// use, come first in Qloo's order, then the rest; six are kept.
-const NOT_MAINLY_SHOWS = /\b(museum|gallery|art center|flea market|thrift store|film production|photography|convention center|book ?store|book shop|gift shop|garden|historical landmark|tourist attraction|wedding venue|church|school|university|library|housing)\b/i;
-const SHOW_ROOM = /\b(live music|music venue|night ?club|jazz club|bar|pub|lounge)\b/i;
-export function showRoomsFirst<T extends { categories?: string[] }>(rooms: T[], keep: number): T[] {
-  const first = (r: T) => (r.categories ?? []).some((c) => SHOW_ROOM.test(c)) && !(r.categories ?? []).some((c) => NOT_MAINLY_SHOWS.test(c));
-  return [...rooms.filter(first), ...rooms.filter((r) => !first(r))].slice(0, keep);
+// Qloo's rooms for an act (places tagged live music venue or concert hall) include, for bigger acts, places
+// whose main use isn't shows (live: Handel Hendrix House, a museum; Dulwich Picture Gallery; a flea market and a
+// film studio for Phoebe Bridgers). Twelve are asked for, those are left out (never the venue's own room), and
+// the first six are kept in Qloo's order.
+const NOT_MAINLY_SHOWS = /\b(museum|gallery|flea market|thrift store|film production|photography|convention center|book ?store|book shop|gift shop|garden|historical landmark|tourist attraction|wedding venue|church|school|university|library|housing)\b/i;
+export function showRooms<T extends { id?: string; categories?: string[] }>(rooms: T[], keep: number, own?: string): T[] {
+  return rooms.filter((r) => r.id === own || !(r.categories ?? []).some((c) => NOT_MAINLY_SHOWS.test(c))).slice(0, keep);
 }
 const TASTE_GAP = 0.09;
 
@@ -349,7 +347,7 @@ export async function forVenue(
   const rivals: VenueResult["rivals"] = { act: "", rooms: [] };
   if (fits[0] && city) {
     try {
-      const rooms = showRoomsFirst(await q.venues([fits[0].id], city, 12), 6);
+      const rooms = showRooms(await q.venues([fits[0].id], city, 12), 6, v.id);
       rivals.act = fits[0].name;
       rivals.rooms = rooms.map((r) => ({ name: r.name, ...(r.affinity !== undefined ? { affinity: r.affinity } : {}), you: r.id === v.id }));
       trace.push({ step: "Rivals", detail: `Asked Qloo which rooms in ${city} fit ${fits[0].name}'s fans${rooms.some((r) => r.id === v.id) ? "; yours is among them" : ""}` });
@@ -438,7 +436,7 @@ export async function forArtist(
       notFoundCities.push(text);
       continue;
     }
-    const rooms = showRoomsFirst(await q.venues([a.id], c.query, 12), 6);
+    const rooms = showRooms(await q.venues([a.id], c.query, 12), 6);
     const note = c.unmatched ? `"${text}" was read as ${c.name}; "${c.unmatched}" didn't match its state or country, so check this is the city you meant.` : undefined;
     if (note) trace.push({ step: "Check", detail: note });
     cities.push({
@@ -474,7 +472,7 @@ export async function forArtist(
     ours: ["Cities are ordered by Qloo's affinity for the act there; a city Qloo has no score for comes last."],
     limits: [
       "Qloo measures taste, not capacity, fees or availability: check that a room's size fits before you pitch it.",
-      "Rooms are the places Qloo tags as live music venues or concert halls. For bigger acts Qloo also ranks museums, galleries and classical halls; rooms filed as music venues or bars come first, the others after.",
+      "Rooms are the places Qloo tags as live music venues or concert halls. For bigger acts Qloo also ranks museums, galleries and other places mainly used for something else; those are left out. Concert halls stay, classical ones included: check that a room books your kind of show.",
       "A city's score compares the act with everything that city likes; it is a relative signal, not a ticket forecast.",
     ],
     degraded: false,
