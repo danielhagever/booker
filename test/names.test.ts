@@ -1,4 +1,4 @@
-// Name matching against 469 realistic inputs (test/name-cases.mjs). Run: npm test
+// Name matching against 471 realistic inputs (test/name-cases.mjs). Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveArtist, resolveVenue } from "../src/resolve.ts";
@@ -21,7 +21,7 @@ const is = (...want: string[]) => (out: string) => want.includes(out);
 const starts = (...want: string[]) => (out: string) => want.some((w) => out.startsWith(w));
 const eqList = (...xs: string[]) => (out: string) => out === JSON.stringify(xs);
 
-test("name matching: 469 realistic inputs, each with the answer a reasonable person expects", async () => {
+test("name matching: 471 realistic inputs, each with the answer a reasonable person expects", async () => {
   const wrong: string[] = [];
   let count = 0;
   const check = (kind: string, typed: string, out: string, ok: (o: string) => boolean) => {
@@ -34,13 +34,18 @@ test("name matching: 469 realistic inputs, each with the answer a reasonable per
     runArtist: async (typed: string, found: unknown[], ok: (o: string) => boolean) => check("artist", typed, show(await resolveArtist(fake(found), typed)), ok),
     runSplit: (text: string, ok: (o: string) => boolean) => check("split", text, JSON.stringify(names(text, 8).list.map((x) => x.name)), ok),
   });
-  assert.equal(count, 469);
+  assert.equal(count, 471);
   assert.deepEqual(wrong, []);
 });
 
-test("an act's note in brackets is left out of the Qloo search (live: the whole text found 'Lafayette Afro Rock Band')", async () => {
+test("an act's note in brackets: when the whole text finds nothing like the name, the name alone is searched (live: 'Lafayette Afro Rock Band')", async () => {
   const asked: string[] = [];
   const q = { search: async (t: string) => (asked.push(t), t === "Wednesday" ? [art("Wednesday"), art("Wednesday 13")] : [art("Lafayette Afro Rock Band")]), byIds: async () => [] } as any;
   assert.equal(show(await resolveArtist(q, "Wednesday (indie rock band)")), "Wednesday closest");
-  assert.deepEqual(asked, ["Wednesday"]);
+  assert.deepEqual(asked, ["Wednesday (indie rock band)", "Wednesday"]);
+  // Another name in the note is found by the whole text's search, with no second search.
+  asked.length = 0;
+  const alias = { search: async (t: string) => (asked.push(t), t === "Yasiin Bey (Mos Def)" ? [art("Mos Def")] : []), byIds: async () => [] } as any;
+  assert.equal(show(await resolveArtist(alias, "Yasiin Bey (Mos Def)")), "Mos Def closest");
+  assert.deepEqual(asked, ["Yasiin Bey (Mos Def)"]);
 });
