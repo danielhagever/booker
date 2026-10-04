@@ -1,6 +1,7 @@
 // Name matching against 472 realistic inputs (test/name-cases.mjs). Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { resolveArtist, resolveVenue } from "../src/resolve.ts";
 import { names } from "../src/input.ts";
 // @ts-ignore: plain JavaScript table
@@ -15,7 +16,7 @@ const place = (name: string, city?: string, region?: string, categories = ["Live
   ...extra,
 });
 const art = (name: string, genre = "Indie") => ({ id: `a${++n}`, name, types: ["urn:entity:artist"], genres: [genre] });
-const fake = (found: unknown[]) => ({ search: async () => found, byIds: async () => [] }) as any;
+const fake = (found: unknown[]) => ({ search: async () => found, byIds: async () => [], budget: { left: () => 48 } }) as any;
 const show = (r: any) => (r ? `${r.entity.name}${r.entity.city ? ` [${r.entity.city}]` : ""} ${r.match}` : "none");
 const is = (...want: string[]) => (out: string) => want.includes(out);
 const starts = (...want: string[]) => (out: string) => want.some((w) => out.startsWith(w));
@@ -40,12 +41,39 @@ test("name matching: 472 realistic inputs, each with the answer a reasonable per
 
 test("an act's note in brackets: when the whole text finds nothing like the name, the name alone is searched (live: 'Lafayette Afro Rock Band')", async () => {
   const asked: string[] = [];
-  const q = { search: async (t: string) => (asked.push(t), t === "Wednesday" ? [art("Wednesday"), art("Wednesday 13")] : [art("Lafayette Afro Rock Band")]), byIds: async () => [] } as any;
+  const q = { search: async (t: string) => (asked.push(t), t === "Wednesday" ? [art("Wednesday"), art("Wednesday 13")] : [art("Lafayette Afro Rock Band")]), byIds: async () => [], budget: { left: () => 48 } } as any;
   assert.equal(show(await resolveArtist(q, "Wednesday (indie rock band)")), "Wednesday closest");
   assert.deepEqual(asked, ["Wednesday (indie rock band)", "Wednesday"]);
   // Another name in the note is found by the whole text's search, with no second search.
   asked.length = 0;
-  const alias = { search: async (t: string) => (asked.push(t), t === "Yasiin Bey (Mos Def)" ? [art("Mos Def")] : []), byIds: async () => [] } as any;
+  const alias = { search: async (t: string) => (asked.push(t), t === "Yasiin Bey (Mos Def)" ? [art("Mos Def")] : []), byIds: async () => [], budget: { left: () => 48 } } as any;
   assert.equal(show(await resolveArtist(alias, "Yasiin Bey (Mos Def)")), "Mos Def closest");
   assert.deepEqual(asked, ["Yasiin Bey (Mos Def)"]);
+});
+
+test("acts with a note in brackets on Qloo's live answers get the act a reasonable person expects", async () => {
+  const { T } = await import("./note-cases.mjs" as string);
+  const F = JSON.parse(readFileSync(new URL("./note-fixtures.json", import.meta.url), "utf8"));
+  const wrong: string[] = [];
+  let count = 0;
+  for (const [input, kind, want] of T) {
+    if (kind !== "artist") continue;
+    count++;
+    const q = { search: async (t: string) => F[`artist|${t}`] ?? assert.fail(`no recorded answer for ${t}`), byIds: async () => [], budget: { left: () => 48 } } as any;
+    const r = await resolveArtist(q, input);
+    const got = r ? r.entity.name : "none";
+    if (!want(got)) wrong.push(`${input} -> ${got}`);
+  }
+  assert.equal(count, 14);
+  assert.deepEqual(wrong, []);
+});
+
+test("the name alone is searched a second time only while the request has calls to spare", async () => {
+  const asked: string[] = [];
+  const q = (left: number) => ({ search: async (t: string) => (asked.push(t), t === "Wednesday" ? [art("Wednesday")] : []), byIds: async () => [], budget: { left: () => left } }) as any;
+  assert.equal(show(await resolveArtist(q(21), "Wednesday (indie rock band)")), "Wednesday closest");
+  assert.deepEqual(asked, ["Wednesday (indie rock band)", "Wednesday"]);
+  asked.length = 0;
+  assert.equal(show(await resolveArtist(q(20), "Wednesday (indie rock band)")), "none", "with 20 calls left, the rest of the search keeps them");
+  assert.deepEqual(asked, ["Wednesday (indie rock band)"]);
 });

@@ -442,13 +442,16 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
 const label = (e: Entity) => (e.disambiguation && nameKey(e.disambiguation) !== nameKey(e.name) ? `${e.name} (${e.disambiguation})` : e.name);
 
 // Artists: 5 candidates, like the harness.
+const SPARE_FOR_NAMES = 20;
+
 export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | null> {
   const artists = (found: Entity[]) => found.filter((e) => e.types.includes("urn:entity:artist") || !e.types.length);
   const found = artists(await q.search(input, "urn:entity:artist", 5));
   let r = rankNames(found, input);
-  // A note in brackets that told nothing: the name alone is searched too (live, "Wednesday (indie rock band)"
-  // found only "Lafayette Afro Rock Band").
-  if (withoutNote(input) !== input && (!r || r.note === "set aside")) r = rankNames(together(found, artists(await q.search(withoutNote(input), "urn:entity:artist", 5))), input);
+  // With a note in brackets, the name alone is searched too when that may find a better entry (see Ranked), but
+  // only while the request has calls to spare: 8 acts and 8 pitches, each with a note, would otherwise take 16
+  // more and leave the rest of the search none (measured: 48 of 48, and a single retry then failed it).
+  if (withoutNote(input) !== input && (!r || r.searchName) && q.budget.left() > SPARE_FOR_NAMES) r = rankNames(together(found, artists(await q.search(withoutNote(input), "urn:entity:artist", 5))), input);
   if (!r) return null;
   return {
     input,
@@ -459,15 +462,18 @@ export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | 
   };
 }
 
-// A note in brackets at the end is how an agent or a person says which one. It is read in this order:
-// - part of the name, a subtitle: the entry that starts with the name and holds the note's words ("Star Wars
-//   (The Empire Strikes Back)" is Episode V, not the 1977 film);
-// - about the name: the name before it is matched, and the note's words pick among entries that share that name
-//   by Qloo's disambiguation, a film's year ("Dune (2021 film)"; "Succession (TV series)" is Succession);
-// - another name for it, used only when it is that name exactly ("Yasiin Bey (Mos Def)").
-// The note's words never make a match on their own ("Scream: The TV Series" for "Succession (TV series)",
-// seen live), and the pick is only a closest match, since what was typed wasn't a name. A whole text that is
-// exactly a name ("Birdman (or The Unexpected Virtue of Ignorance)") is that name.
+// A note in brackets at the end is how an agent or a person says which one. It is read in this order (Qloo's
+// live answers for 44 such inputs are recorded in test/note-fixtures.json):
+// - a title holding both the name and every word of the note, in either order ("Star Wars (The Empire Strikes
+//   Back)" is Episode V; "Parts Unknown (Anthony Bourdain)" is Anthony Bourdain: Parts Unknown). Not for acts:
+//   an act holding both names is a collaboration ("Mos Def (Yasiin Bey & Marvin Gaye)");
+// - the name alone, among entries that don't hold the note's words; the note's words pick among entries that
+//   share the name by Qloo's disambiguation, a film's year ("Dune (2021 film)"); "Dune (Part One)" is Dune, not
+//   Dune: Part Two;
+// - the note as another name, used only when it is that name exactly ("Yasiin Bey (Mos Def)").
+// The note's words never make a match on their own ("Scream: The TV Series" for "Succession (TV series)", live),
+// and the pick is only a closest match, since what was typed wasn't a name. A whole text that is exactly a name
+// ("Birdman (or The Unexpected Virtue of Ignorance)") is that name.
 const NOTE = /\s*[([]([^()[\]]*)[)\]]\s*$/;
 export const withoutNote = (s: string) => {
   const note = NOTE.exec(s);
@@ -479,10 +485,11 @@ export interface Ranked {
   match: "exact" | "ambiguous" | "closest";
   list: Entity[]; // every near name, best first
   offered: (e: Entity) => boolean; // close enough to offer under "Not it?"
-  // How a note in brackets was read; "set aside" means it told nothing, so a search for the name alone may
-  // find better candidates (Qloo's search with the whole text can miss the name: live, "Dune (2021 film)"
-  // found only the 1984 film).
-  note?: "subtitle" | "year" | "set aside" | "other name";
+  note?: "title" | "year" | "name" | "other name"; // how a note in brackets was read
+  // Qloo is searched with the whole text first; the name alone is searched too when nothing matched, when the
+  // name matched only loosely ("The Godfather (Part I)" found only Part II and III), or when the note's year
+  // wasn't among the entries ("Dune (2021 film)" found only the 1984 film).
+  searchName?: boolean;
 }
 
 // The candidates Qloo's search returned for what was typed, ranked; null when none resembles it.
@@ -492,22 +499,23 @@ export function rankNames(found: Entity[], input: string): Ranked | null {
   if (all?.match === "exact" || bare === input) return all;
   const noted = NOTE.exec(input)![1];
   const told = words(noted).filter((w) => !SMALL.has(w));
-  // An entry holding the note's words is a subtitle when it starts with the name ("Harry Potter and the Prisoner
-  // of Azkaban"); one that only holds both, a collaboration ("Mos Def (Yasiin Bey & Marvin Gaye)", live), is
-  // neither the subtitle nor the name alone.
-  const holdsNote = (e: Entity) => !!told.length && share(told, words(e.name)) >= 0.5;
-  const subtitled = found.filter((e) => ` ${nameKey(e.name)} `.startsWith(` ${nameKey(bare)} `) && holdsNote(e));
-  if (subtitled.length) {
+  const named = words(bare).filter((w) => !SMALL.has(w));
+  const holds = (e: Entity, ws: string[]) => !!ws.length && ws.every((w) => closeTo(w, words(e.name), false));
+  const holdsNote = (e: Entity) => holds(e, told);
+  const isArtist = (e: Entity) => e.types.includes("urn:entity:artist");
+  const titled = found.filter((e) => !isArtist(e) && holdsNote(e) && holds(e, named));
+  if (titled.length) {
     const near = (e: Entity) => share(words(input), words(e.name)) + share(words(e.name), words(input));
-    const pick = subtitled.map((e, i) => ({ e, i, s: near(e) })).sort((x, y) => y.s - x.s || x.i - y.i)[0].e;
+    const pick = titled.map((e, i) => ({ e, i, s: near(e) })).sort((x, y) => y.s - x.s || x.i - y.i)[0].e;
     const r = rankTyped(found, bare);
-    return { pick, match: "closest", list: [pick, ...(r?.list ?? []).filter((e) => e !== pick)], offered: (e) => !!r?.offered(e), note: "subtitle" };
+    return { pick, match: "closest", list: [pick, ...(r?.list ?? []).filter((e) => e !== pick)], offered: (e) => !!r?.offered(e), note: "title" };
   }
   const r = rankTyped(found.filter((e) => !holdsNote(e)), bare);
   if (r) {
     const said = r.match === "ambiguous" ? r.list.filter((e) => squashed(e.name) === squashed(r.pick.name) && !!e.disambiguation && words(e.disambiguation).some((w) => told.includes(w))) : [];
     if (said.length === 1) return { ...r, pick: said[0], match: "closest", list: [said[0], ...r.list.filter((e) => e !== said[0])], note: "year" };
-    return { ...r, match: r.match === "exact" ? "closest" : r.match, note: "set aside" };
+    const year = told.some((w) => /^\d{4}$/.test(w));
+    return { ...r, match: r.match === "exact" ? "closest" : r.match, note: "name", searchName: r.match === "closest" || year };
   }
   const other = rankTyped(found, noted);
   return other && other.match !== "closest" ? { ...other, match: "closest", note: "other name" } : null;
