@@ -1,4 +1,4 @@
-// 445 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
+// 448 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
 // the answer a reasonable person expects. Built by an independent review that ran them through ten versions
 // of the matcher; every one of these was right in at least one version, and all are right now.
 export default async function ({ place, art, runVenue, runArtist, runSplit, is, starts, eqList }) {
@@ -509,6 +509,10 @@ export default async function ({ place, art, runVenue, runArtist, runSplit, is, 
   await runVenue("The Hideout, 1354 W Wabansia Ave, Chicago", [P("The Hideout", "West Chicago", "Illinois", ["Bar"]), P("The Hideout", "Chicago", "Illinois", ["Bar", "Live music venue"])], notExactWrong("The Hideout", "Chicago"));
   await runVenue("The Academy, N Circular Rd, Ireland", [uk("The Academy", "Belfast", "Northern Ireland"), abroad("The Academy", "Dublin", "Leinster", "Ireland", "IE")], notExactWrong("The Academy", "Dublin"));
   await runVenue("Lincoln Theater, Fuller St, Helena", [P("Lincoln Theater", "Saint Helena", "California"), P("Lincoln Theater", "Helena", "Montana")], notExactWrong("Lincoln Theater", "Helena"), "St in a street isn't Saint");
+  // Pass 57: "in" and "at" connect, they aren't Indiana, India or Austria; any comma separates.
+  await runVenue("The Bluebird in Nashvile", [P("The Bluebird", "Bloomington", "Indiana"), P("The Bluebird", "Nashville", "Tennessee"), P("The Bluebird", "Denver", "Colorado")], notExactWrong("The Bluebird", "Nashville"));
+  await runVenue("Konzerthaus at Gendarmenmarkt, Germny", [abroad("Konzerthaus", "Vienna", "Vienna", "Austria", "AT"), abroad("Konzerthaus", "Berlin", "Berlin", "Germany", "DE")], notExactWrong("Konzerthaus", "Berlin"));
+  await runVenue("Lincoln Theater\uFF0CFuller St\uFF0CHelena", [P("Lincoln Theater", "Saint Helena", "California"), P("Lincoln Theater", "Helena", "Montana")], notExactWrong("Lincoln Theater", "Helena"), "a full-width comma");
   const savoy = () => [abroad("Savoy Theatre", "Sydney", "Nova Scotia", "Canada", "CA"), abroad("Savoy Theatre", "Sydney", "New South Wales", "Australia", "AU")];
   await runVenue("Savoy Theatre, Sydney, Australia", savoy(), (o) => o.startsWith("Savoy Theatre [Sydney]") && !o.includes("ambiguous"), "the country tells two Sydneys apart");
   await runVenue("Savoy Theatre, Sydney, AU", savoy(), (o) => o.startsWith("Savoy Theatre [Sydney]") && !o.includes("ambiguous"));

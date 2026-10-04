@@ -228,7 +228,7 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
   const commaAt = new Set<number>();
   {
     let k = 0;
-    const marked = words(input.replace(/,/g, ` ${BREAK} `));
+    const marked = words(input.normalize("NFKC").replace(/[,\n]/g, ` ${BREAK} `));
     for (const w of marked) w === BREAK ? commaAt.add(k) : k++;
     if (k !== typed.length) commaAt.clear();
   }
@@ -335,7 +335,7 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
       // Saint Helena).
       const base = typed.length - rest.length;
       const typedIn = (ph: string[]) =>
-        rest.some((_, j) => ph.every((w, m) => { const t = rest[j + m]; return t !== undefined && (t === w || PLACE_ABBR[t]?.includes(w)) && (m === 0 || !commaAt.has(base + j + m)); }));
+        rest.some((_, j) => ph.every((w, m) => { const t = rest[j + m]; return t !== undefined && !fillerAt(rest, j + m) && (t === w || PLACE_ABBR[t]?.includes(w)) && (m === 0 || !commaAt.has(base + j + m)); }));
       // How far a typed word is from the room's place. Its own city (words of four letters or more): 1 when cut off
       // ("Phila", "ATL", "Det", also before a neighborhood) or one letter off in a word of four letters or more
       // ("Pual", "Rneo"; "End" isn't Bend). Its other place words of four letters or more: its state, the big city
