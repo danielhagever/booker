@@ -44,10 +44,10 @@ test("an act's note in brackets: when the whole text finds nothing like the name
   const q = { search: async (t: string) => (asked.push(t), t === "Wednesday" ? [art("Wednesday"), art("Wednesday 13")] : [art("Lafayette Afro Rock Band")]), byIds: async () => [], budget: { left: () => 48 } } as any;
   assert.equal(show(await resolveArtist(q, "Wednesday (indie rock band)")), "Wednesday closest");
   assert.deepEqual(asked, ["Wednesday (indie rock band)", "Wednesday"]);
-  // The note is taken as another name only after the name alone was searched too, and found nothing.
+  // An act's note is never another name: when the name alone finds nothing either, the act is not found.
   asked.length = 0;
   const alias = { search: async (t: string) => (asked.push(t), t === "Yasiin Bey (Mos Def)" ? [art("Mos Def")] : []), byIds: async () => [], budget: { left: () => 48 } } as any;
-  assert.equal(show(await resolveArtist(alias, "Yasiin Bey (Mos Def)")), "Mos Def closest");
+  assert.equal(show(await resolveArtist(alias, "Yasiin Bey (Mos Def)")), "none");
   assert.deepEqual(asked, ["Yasiin Bey (Mos Def)", "Yasiin Bey"]);
 });
 
@@ -64,7 +64,7 @@ test("acts with a note in brackets on Qloo's live answers get the act a reasonab
     const got = r ? r.entity.name : "none";
     if (!want(got)) wrong.push(`${input} -> ${got}`);
   }
-  assert.equal(count, 24);
+  assert.equal(count, 40);
   assert.deepEqual(wrong, []);
 });
 
