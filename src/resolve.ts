@@ -328,10 +328,17 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
           const d = typoDistance(w, p);
           return d <= 1 && (short ? w.length >= 4 : Math.max(w.length, p.length) >= 5) ? d : d === 2 && w.length >= 6 ? 2 : 9;
         };
-        return Math.min(9, ...cityWords.map((p) => near(p, true, true)), ...others.map((p) => near(p, false, false)), ...(last ? countryWords.map((p) => near(p, false, false)) : []));
+        return Math.min(9, ...cityWords.map((p) => near(p, true, true)), ...others.map((p) => near(p, false, false)));
       };
+      // A country, exact or as the last word cut off or one letter off ("Aus", "Austrailia"; never two letters off:
+      // "Island" isn't Ireland), only tells rooms of different countries apart: after any sign of the room's own
+      // city or state ("State Theatre, Syd, Aus" is Sydney, not Melbourne; "Paramount Theatre, Aus" Austin first).
+      const countryNear = (w: string, i: number) =>
+        i === said.length - 1 && w.length >= 3 && countryWords.some((p) => p.startsWith(w) || (typoDistance(w, p) <= 1 && Math.max(w.length, p.length) >= 5));
       const nearest = Math.min(9, ...said.map((w, i) => off(w, i)));
-      opens = Math.max(opens, said.some((w) => loc.all.has(w)) ? 3 : nearest <= 2 ? 3 - nearest / 2 : 1);
+      const tierHere = said.some((w) => loc.all.has(w) && !country.has(w)) ? 6.3 : nearest <= 2 ? 6.3 + nearest / 10
+        : said.some((w) => country.has(w)) ? 6.53 : said.some(countryNear) ? 6.56 : 6.6;
+      opens = opens ? Math.min(opens, tierHere) : tierHere;
     }
     return { e, order, inCity, full, bare, bareAnywhere, elsewhere, longerOwn, longerOther, opens, closeness, resembles: wordsResemble(typedContent, near, false), music };
   });
@@ -355,8 +362,9 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
       : m.full ? 4
       : m.bare ? 5
       : m.elsewhere ? 6
-      : m.opens > 1 ? 6.3 + (3 - m.opens) / 5 // 6.3 own place, 6.4 one letter off or cut off, 6.5 two letters off
-      : m.opens === 1 ? 6.6
+      // 6.3 own place, 6.4 cut off or one letter off, 6.5 two letters off, 6.53 its country, 6.56 the country
+      // misspelled, 6.6 nothing of its place.
+      : m.opens ? m.opens
       : m.resembles ? 7
       : 9;
     const located = typed.some((w) => w !== "city" && locationOf(m.e).all.has(w));
