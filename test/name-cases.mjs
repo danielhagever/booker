@@ -1,4 +1,4 @@
-// 342 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
+// 346 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
 // the answer a reasonable person expects. Built by an independent review that ran them through ten versions
 // of the matcher; every one of these was right in at least one version, and all are right now.
 export default async function ({ place, art, runVenue, runArtist, runSplit, is, starts, eqList }) {
@@ -293,6 +293,11 @@ export default async function ({ place, art, runVenue, runArtist, runSplit, is, 
   await runArtist("The Stones", A(["The Rolling Stones", "The Stone Roses", "The Stone"], "Rock"), aIs("The Rolling Stones", "closest"), "a plural isn't a typo");
   await runArtist("The Pumpkins", A(["The Smashing Pumpkins", "The Pumpkin"], "Rock"), aIs("The Smashing Pumpkins", "closest"));
   await runArtist("A. Savage", A(["A Savage"]), aIs("A Savage", "exact"));
+  // Pass 38 (2026-10-04)
+  await runArtist("The Killer", A(["The Killers", "The Lady Killer"], "Rock"), aIs("The Killers", "closest"));
+  await runArtist("The Smith", A(["The Smiths", "The Patti Smith Group"], "Rock"), aIs("The Smiths", "closest"));
+  await runArtist("The Zombie", A(["The Zombies", "The Walking Zombie", "Rob Zombie"], "Rock"), aIs("The Zombies", "closest"));
+  await runArtist("A. Savage", A(["A Savage", "A. Savage"]), aIs("A. Savage", "exact", "ambiguous"), "the dotted record first");
   await runArtist("The Weekend", A(["The Weeknd", "Vampire Weekend", "The Long Weekend", "Weekender"], "R&B"), aIs("The Weeknd", "closest"));
   await runArtist("The Monkeys", A(["The Monkees", "Arctic Monkeys", "The Mighty Monkeys"], "Rock"), aIs("The Monkees", "closest"));
   await runArtist("The The", A(["The Head and the Heart", "The Boy and the Beast", "The Who"], "Rock"), is("none"));

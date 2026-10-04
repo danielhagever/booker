@@ -629,8 +629,9 @@ test("artists: near names are ranked by closeness, and Not it? offers only close
   assert.deepEqual(sun!.alternatives.map((a) => a.name), [], "Not it? doesn't offer a plural of an exact name");
   const kiss = await resolveArtist(fake(["Kiss", "Kisses", "The Who", "The Whos"]), "Kiss");
   assert.deepEqual(kiss!.alternatives.map((a) => a.name), []);
-  // ...but for a name of two words a plural is how the intended act stays reachable.
-  for (const [typed, names, offered] of [["Black Key", ["Black Key Alley", "The Black Keys"], "The Black Keys"], ["Fleet Fox", ["Fleet Fox", "Fleet Foxes"], "Fleet Foxes"], ["Bee Gee", ["The Bee Gee Experience", "Bee Gees"], "Bee Gees"]] as const) {
+  // ...but for a name of two words, or when nothing matched exactly, a plural is how the intended act stays
+  // reachable.
+  for (const [typed, names, offered] of [["Black Key", ["Black Key Alley", "The Black Keys"], "The Black Keys"], ["Fleet Fox", ["Fleet Fox", "Fleet Foxes"], "Fleet Foxes"], ["Bee Gee", ["The Bee Gee Experience", "Bee Gees"], "Bee Gees"], ["The Car", ["The Car Is on Fire", "The Cars", "Car Seat Headrest"], "The Cars"], ["Eel", ["Eel Pie", "Eels"], "Eels"]] as const) {
     const got = await resolveArtist(fake([...names]), typed);
     assert.ok([got!.entity.name, ...got!.alternatives.map((a) => a.name)].includes(offered), `${typed}: ${offered} is picked or offered`);
   }

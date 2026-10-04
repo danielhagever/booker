@@ -299,7 +299,8 @@ export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | 
   // "Killers" is ambiguous between The Killers and Killers, in Qloo's order.
   const literalKey = allWords(input).join(" ");
   const startsWithArticle = allWords(input).length > 1 && ARTICLES.has(allWords(input)[0]); // also "A. Savage"
-  const literally = startsWithArticle ? found.filter((e) => allWords(e.name).join(" ") === literalKey) : [];
+  // Among those, the one written the same way first ("A. Savage" is A. Savage before A Savage).
+  const literally = startsWithArticle ? found.filter((e) => allWords(e.name).join(" ") === literalKey).sort((x, y) => Number(nameKey(y.name) === nameKey(input)) - Number(nameKey(x.name) === nameKey(input))) : [];
   const spaced = [...literally, ...found.filter((e) => nameKey(e.name) === nameKey(input) && !literally.includes(e))];
   const initials = (x: string) => words(x).some((w) => w.length === 1);
   const same = (e: Entity) => squashed(e.name) === squashed(input);
@@ -339,17 +340,17 @@ export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | 
   const closeness = (e: Entity) => share(typedWords, words(e.name)) + share(words(e.name), typedWords);
   // A name held only after a leading article ranks below one letter off that also leads with it: "The Monkeys"
   // is The Monkees, not The Mighty Monkeys; but "The Stones" is The Rolling Stones, not Stone or The Stone (a
-  // plural isn't a typo).
-  const pluralOf = (e: Entity) => { const n = squashed(e.name); return [`${n}s`, `${n}es`].includes(typedWhole) || [`${typedWhole}s`, `${typedWhole}es`].includes(n); };
+  // plural of it isn't a typo; "The Killer" is still The Killers, not The Lady Killer).
+  const pluralOf = (e: Entity) => { const n = squashed(e.name); return [`${n}s`, `${n}es`].includes(typedWhole); };
   const anyWhole = found.some((e) => whole(e) && allWords(e.name)[0] === typedArticle && !pluralOf(e));
   const score = (e: Entity) => (exact.includes(e) || same(e) ? 100 : (literal(e) ? 30 : whole(e) ? 20 : leading(e) ? (anyWhole ? 10 : 30) : 0) + closeness(e));
   const near = (e: Entity) => sure(e) || whole(e) || (share(typedWords, words(e.name)) >= 0.5 && share(words(e.name), typedWords) >= 0.5);
   const list = found.filter(near).map((e, i) => ({ e, i, s: score(e) })).sort((x, y) => y.s - x.s || x.i - y.i).map((x) => x.e);
   if (!list.length) return null;
-  // Not it? doesn't offer a mere plural of a one-word name ("Kiss" isn't offered Kisses), but does for longer
-  // names ("Black Key" is offered The Black Keys).
-  const longer = typedWords.filter((w) => !SMALL.has(w)).length > 1;
-  const offered = (e: Entity) => sure(e) || share(typedWords, words(e.name), longer) > 0.5;
+  // Not it? doesn't offer a mere plural of an exact one-word name ("Kiss" isn't offered Kisses), but does for
+  // longer names ("Black Key" is offered The Black Keys) and when nothing matched exactly ("The Car": The Cars).
+  const plurals = typedWords.filter((w) => !SMALL.has(w)).length > 1 || !exact.length;
+  const offered = (e: Entity) => sure(e) || share(typedWords, words(e.name), plurals) > 0.5;
   const pick = exact[0] ?? list[0];
   return {
     input,
