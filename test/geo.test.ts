@@ -1,8 +1,9 @@
-// City lookup against 370 realistic ways people type tour cities (test/geo-cases.json), each with the
+// City lookup against 383 realistic ways people type tour cities (test/geo-cases.json), each with the
 // city it should land on and whether the answer should flag what followed the comma. The geocoder's real
 // answers were recorded once (test/geo-fixtures.json, trimmed), so this runs offline. Not included, because
-// Open-Meteo has no good answer for them: Oahu, Big Island, Orange County, "Stoke, UK", "Kingston, UK", and
-// the bare names Newcastle, Victoria and Hong Kong, which are ambiguous. Run: npm test
+// Open-Meteo's answer doesn't hold the right place: Oahu, Big Island, Orange County, "Stoke, UK", "Kingston, UK",
+// "Newcastle, England" (no Newcastle upon Tyne under that name), "Saint Etienne, France" and "Saint Malo" (only
+// villages), "St Johns, NL"; and the ambiguous bare names Newcastle, Victoria, Hong Kong, St Andrews. Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -15,7 +16,7 @@ const FIX: Record<string, unknown[]> = Object.fromEntries(
 );
 const CASES: [string, string, string | null][] = JSON.parse(readFileSync(new URL("./geo-cases.json", import.meta.url), "utf8"));
 
-test("city lookup: 370 realistic inputs land on the right city, and only real mismatches are flagged", async () => {
+test("city lookup: 383 realistic inputs land on the right city, and only real mismatches are flagged", async () => {
   const original = globalThis.fetch;
   const missing = new Set<string>();
   globalThis.fetch = (async (input: any) => {
@@ -28,6 +29,10 @@ test("city lookup: 370 realistic inputs land on the right city, and only real mi
   }) as typeof fetch;
   const wrong: string[] = [];
   try {
+    // Two places can share a label: the UK's nations must pick the right one (Bangor in Wales, not Northern Ireland).
+    const wales = await cityCenter(memoryKV().kv, new Budget(48), "Bangor, Wales");
+    const ni = await cityCenter(memoryKV().kv, new Budget(48), "Bangor, Northern Ireland");
+    assert.ok(Math.abs(wales!.lat - 53.23) < 0.1 && Math.abs(ni!.lat - 54.66) < 0.1, `Bangor, Wales at ${wales!.lat}; Northern Ireland at ${ni!.lat}`);
     for (const [typed, want, note] of CASES) {
       const p = await cityCenter(memoryKV().kv, new Budget(48), typed);
       const got = p ? p.name : "NULL (not placed)";
@@ -37,6 +42,6 @@ test("city lookup: 370 realistic inputs land on the right city, and only real mi
     globalThis.fetch = original;
   }
   assert.deepEqual([...missing], [], "every geocoder call has a recorded answer");
-  assert.equal(CASES.length, 370);
+  assert.equal(CASES.length, 383);
   assert.deepEqual(wrong, []);
 });

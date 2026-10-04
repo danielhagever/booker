@@ -34,7 +34,8 @@ const OTHER_REGIONS: Record<string, string[]> = {
   nu: ["Nunavut"], nt: ["Northwest Territories", "Northern Territory"], nsw: ["New South Wales"], vic: ["Victoria"],
   qld: ["Queensland"], wa: ["Western Australia"], sa: ["South Australia"], tas: ["Tasmania"], act: ["Australian Capital Territory"],
 };
-const COUNTRY_WORDS: Record<string, string> = { usa: "us", "united states": "us", us: "us", uk: "gb", "united kingdom": "gb", england: "gb", scotland: "gb", wales: "gb" };
+// The UK's nations are regions (admin1), not the whole UK: "Bangor, Wales" isn't Bangor in Northern Ireland.
+const COUNTRY_WORDS: Record<string, string> = { usa: "us", "united states": "us", us: "us", uk: "gb", "united kingdom": "gb" };
 
 async function kvGet(cache: KVNamespace, budget: Budget, key: string): Promise<any> {
   if (!budget.take()) return null;
@@ -91,6 +92,10 @@ const KNOWN_REGIONS = new Set([
     "argentina,chile,colombia,peru,south korea,korea,china,taiwan,india,thailand,vietnam,indonesia,philippines,singapore,malaysia," +
     "united arab emirates,egypt,morocco,nigeria,kenya").split(","),
 ]);
+// One form for comparing place names across spellings: "Saint-Étienne", "St Etienne" and "St. Etienne" are the
+// same name; so are "St. John's" and "St Johns".
+const canon = (s: unknown) =>
+  fold(s).replace(/['\u2019]/g, "").replace(/-/g, " ").replace(/\b(saint|sainte|fort|mount)\b/g, (w) => ({ saint: "st", sainte: "ste", fort: "ft", mount: "mt" })[w] as string).replace(/\s+/g, " ");
 // "St. Paul", "Saint Paul" and "St Paul" are one place to a person, but Open-Meteo knows one spelling,
 // anywhere in the name ("Bay St. Louis", "Port St. Lucie"). The short and the long form are both looked up.
 const SHORT_LONG: [RegExp, string, string][] = [
@@ -113,12 +118,19 @@ function spellings(name: string): string[] {
 }
 
 export async function cityCenter(cache: KVNamespace, budget: Budget, city: string): Promise<Place | null> {
-  const key = `city8:${city.toLowerCase()}`;
+  const key = `city9:${city.toLowerCase()}`;
   const hit = await kvGet(cache, budget, key);
   if (hit) return hit as Place;
-  const typed = ALIASES[fold(city)] ?? city;
+  const typed = (ALIASES[fold(city)] ?? city).replace(/[\u2018\u2019]/g, "'");
   let [name, ...rest] = typed.split(",").map((x) => x.trim());
   if (!name) return null;
+  // A nickname before the comma too: "Quebec City, QC", "Bangalore, India", "Washington DC, USA".
+  const alias = ALIASES[fold(name)];
+  if (alias) {
+    const [aliasName, ...aliasRest] = alias.split(",").map((x) => x.trim());
+    name = aliasName;
+    if (!rest.filter(Boolean).length) rest = aliasRest;
+  }
   let whole: any[] | undefined; // the answer for the whole name, when it was already asked for
   // Without a comma the state or country may close the text ("Austin TX", "Portland Maine", "London
   // England"), but a city's own name may end in one too ("New Britain", "Port Washington", "West New York"):
@@ -147,8 +159,8 @@ export async function cityCenter(cache: KVNamespace, budget: Budget, city: strin
   let exactTyped = false;
   for (const [i, n] of spellings(name).entries()) {
     const found = i === 0 && whole ? whole : await geocode(budget, n, "en");
-    if (i === 0) exactTyped = found.some((r) => fold(r.name) === fold(n));
-    const keep = (r: any) => i === 0 || fold(r.name) === fold(n) || (!exactTyped && fold(r.name).startsWith(fold(n)));
+    if (i === 0) exactTyped = found.some((r) => canon(r.name) === canon(n));
+    const keep = (r: any) => i === 0 || canon(r.name) === canon(n) || (!exactTyped && canon(r.name).startsWith(canon(n)));
     for (const r of found) if (keep(r) && !seen.has(idOf(r))) (seen.add(idOf(r)), list.push(r));
   }
   // A city typed in Hebrew, Arabic or Cyrillic is only found in its own language; its English name
