@@ -79,14 +79,15 @@ const SMALL = new Set(["of", "the", "and", "a", "an", "de", "la", "le", "el", "l
 const TWINS = [["1", "one"], ["2", "ii", "two"], ["3", "iii", "three"], ["4", "iv", "four"], ["5", "five"], ["6", "six"], ["7", "seven"], ["8", "eight"], ["9", "nine"], ["10", "ten"], ["20", "twenty"], ["jr", "junior"]];
 const TWIN = new Map(TWINS.flatMap((g, i) => g.map((w) => [w, i] as const)));
 const twins = (a: string, b: string) => TWIN.has(a) && TWIN.get(a) === TWIN.get(b);
-const plural = (a: string, b: string) => b === `${a}s` || b === `${a}es` || a === `${b}s` || a === `${b}es`;
+const plural = (a: string, b: string) => [a, b].some((x) => x.length >= 3 && [`${x}s`, `${x}es`].includes(x === a ? b : a));
 const closeTo = (w: string, b: string[], plurals = true) => b.some((x) => x === w || twins(w, x) || (plurals && plural(w, x)) || typoDistance(w, x) <= (w.length > 5 ? 2 : w.length > 3 ? 1 : 0));
-// The share of a's words, small words aside, that are close to some word of b. Plurals count only between
-// names of two words or more: "Fleet Fox" is close to Fleet Foxes, but "Boy" isn't to Boys Noize.
+// The share of a's words, small words aside, that are close to some word of b. Plurals of words of three
+// letters or more count between names of as many words: "Fleet Fox" is close to Fleet Foxes and "The Car" to
+// The Cars, but "Boy" isn't to Boys Noize.
 function share(a: string[], b: string[]): number {
   const keep = (ws: string[]) => (ws.some((w) => !SMALL.has(w)) ? ws.filter((w) => !SMALL.has(w)) : ws);
   const ca = keep(a), cb = keep(b);
-  const plurals = ca.length > 1 && cb.length > 1;
+  const plurals = ca.length === cb.length;
   return ca.length ? ca.filter((w) => closeTo(w, cb, plurals)).length / ca.length : 0;
 }
 
@@ -292,7 +293,11 @@ const label = (e: Entity) => (e.disambiguation && nameKey(e.disambiguation) !== 
 // Artists: 5 candidates, like the harness.
 export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | null> {
   const found = (await q.search(input, "urn:entity:artist", 5)).filter((e) => e.types.includes("urn:entity:artist") || !e.types.length);
-  const spaced = found.filter((e) => nameKey(e.name) === nameKey(input));
+  // Letter for letter first ("The Killers" is The Killers, not Killers; "A Savage" is A. Savage, not Savage),
+  // then without a leading article.
+  const literalKey = allWords(input).join(" ");
+  const literally = found.filter((e) => allWords(e.name).join(" ") === literalKey);
+  const spaced = literally.length ? literally : found.filter((e) => nameKey(e.name) === nameKey(input));
   const initials = (x: string) => words(x).some((w) => w.length === 1);
   const same = (e: Entity) => squashed(e.name) === squashed(input);
   const exact = spaced.length ? spaced : found.filter((e) => (initials(input) || initials(e.name)) && same(e));
@@ -306,13 +311,14 @@ export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | 
   // not Tom Waits). "Not it?" offers only names closer than that: most of what was typed ("Big Thief" isn't
   // offered Big Sean; "Horse Jumper of Love" isn't offered Love of Lesbian).
   const typedWords = words(input);
-  // Typed with its article, the name must hold the article too, in place or leading the name ("The Weekend"
-  // isn't inside Vampire Weekend; "The Hip" is inside The Tragically Hip).
-  const typedAll = allWords(input).join(" ");
+  // Typed with its article, the name must hold the article too, in place ("The Hip" in The Hip Abduction) or
+  // leading the name ("The Hip" in The Tragically Hip; "The Weekend" isn't in Vampire Weekend, "The The" isn't
+  // in The Head and the Heart).
+  const literal = (e: Entity) => ` ${allWords(e.name).join(" ")} `.includes(` ${literalKey} `);
   const typedArticle = article(input, allWords(input)) ? allWords(input)[0] : "";
-  const inside = (e: Entity) =>
-    ` ${allWords(e.name).join(" ")} `.includes(` ${typedAll} `) ||
-    ((!typedArticle || allWords(e.name)[0] === typedArticle) && ` ${words(e.name).join(" ")} `.includes(` ${typedWords.join(" ")} `));
+  const leading = (e: Entity) =>
+    !!typedArticle && allWords(e.name)[0] === typedArticle && typedWords.some((w) => !SMALL.has(w)) && ` ${words(e.name).join(" ")} `.includes(` ${typedWords.join(" ")} `);
+  const inside = (e: Entity) => literal(e) || leading(e);
   const part = (e: Entity) => { const n = words(e.name); return ` ${typedWords.join(" ")} `.includes(` ${n.join(" ")} `) && n.length * 2 >= typedWords.length; };
   const sure = (e: Entity) => exact.includes(e) || same(e) || inside(e) || part(e);
   // Near names rank in three tiers. A name holding everything typed comes first ("Mavis" is Mavis Staples,
@@ -328,7 +334,10 @@ export async function resolveArtist(q: Qloo, input: string): Promise<Resolved | 
     return nw.length !== typedWords.length || nw.every((w, i) => w === typedWords[i] || Math.min(w.length, typedWords[i].length) >= 3);
   };
   const closeness = (e: Entity) => share(typedWords, words(e.name)) + share(words(e.name), typedWords);
-  const score = (e: Entity) => (exact.includes(e) || same(e) ? 9 : (inside(e) ? 6 : whole(e) ? 3 : 0) + closeness(e));
+  // A name held only after a leading article ranks below one letter off: "The Monkeys" is The Monkees, not The
+  // Mighty Monkeys.
+  const anyWhole = found.some(whole);
+  const score = (e: Entity) => (exact.includes(e) || same(e) ? 100 : (literal(e) ? 30 : whole(e) ? 20 : leading(e) ? (anyWhole ? 10 : 30) : 0) + closeness(e));
   const near = (e: Entity) => sure(e) || whole(e) || (share(typedWords, words(e.name)) >= 0.5 && share(words(e.name), typedWords) >= 0.5);
   const list = found.filter(near).map((e, i) => ({ e, i, s: score(e) })).sort((x, y) => y.s - x.s || x.i - y.i).map((x) => x.e);
   if (!list.length) return null;

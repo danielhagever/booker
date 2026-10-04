@@ -1,4 +1,4 @@
-// 324 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
+// 333 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
 // the answer a reasonable person expects. Built by an independent review that ran them through ten versions
 // of the matcher; every one of these was right in at least one version, and all are right now.
 export default async function ({ place, art, runVenue, runArtist, runSplit, is, starts, eqList }) {
@@ -278,6 +278,16 @@ export default async function ({ place, art, runVenue, runArtist, runSplit, is, 
   await runArtist("The Stones", A(["The Stone Roses", "The Rolling Stones"], "Rock"), aIs("The Rolling Stones", "closest"));
   await runArtist("Joey Badass", A(["Joey Bada$$"], "Hip hop"), aIs("Joey Bada$$", "exact"));
   await runArtist("Go Go 7188", A(["GO!GO!7188"], "Rock"), aIs("GO!GO!7188", "exact"));
+  // Pass 35 (2026-10-04)
+  await runArtist("A Savage", A(["A. Savage", "Savage", "Savage Garden", "21 Savage", "Savages"]), aIs("A. Savage", "exact"));
+  await runArtist("A Swayze and the Ghosts", A(["A. Swayze & the Ghosts"]), aIs("A. Swayze & the Ghosts", "exact"));
+  await runArtist("The Killers", A(["Killers", "The Killers"], "Rock"), aIs("The Killers", "exact"));
+  await runArtist("The Weekend", A(["The Weeknd", "Vampire Weekend", "The Long Weekend", "Weekender"], "R&B"), aIs("The Weeknd", "closest"));
+  await runArtist("The Monkeys", A(["The Monkees", "Arctic Monkeys", "The Mighty Monkeys"], "Rock"), aIs("The Monkees", "closest"));
+  await runArtist("The The", A(["The Head and the Heart", "The Boy and the Beast", "The Who"], "Rock"), is("none"));
+  await runArtist("The Car", A(["The Cars", "Cars", "Car Seat Headrest"], "Rock"), aIs("The Cars", "closest"));
+  await runArtist("The Bat", A(["The Bats", "Bat for Lashes"], "Rock"), aIs("The Bats", "closest"));
+  await runArtist("The Bee", A(["The Bees", "Bee Gees"], "Rock"), aIs("The Bees", "closest"));
   await runArtist("Bea", A(["Beach House"]), is("none"));
   await runArtist("Tyler the Creator", A(["Tyler, The Creator", "Tyler Childers"]), aIs("Tyler, The Creator", "exact"));
   await runArtist("Simon and Garfunkel", A(["Simon & Garfunkel"]), aIs("Simon & Garfunkel", "exact"));

@@ -620,9 +620,11 @@ test("artists: near names are ranked by closeness, and Not it? offers only close
     const got = await resolveArtist(fake([...names]), typed);
     assert.equal(got!.entity.name, want, `${typed} with ${names.join(", ")}`);
   }
-  for (const [typed, names] of [["Mew", ["Mew", "mewa"]], ["Low", ["Low", "Lou Reed"]], ["Hot Chip", ["Hot Chip", "Hit Chip"]], ["Boy", ["Boy", "Boys Noize", "The Beach Boys"]], ["Yes", ["Yes", "Ye"]], ["Sun", ["Sun", "Suns", "The Suns of Light"]]] as const) {
+  for (const [typed, names] of [["Mew", ["Mew", "mewa"]], ["Low", ["Low", "Lou Reed"]], ["Hot Chip", ["Hot Chip", "Hit Chip"]], ["Boy", ["Boy", "Boys Noize", "The Beach Boys"]], ["Yes", ["Yes", "Ye"]]] as const) {
     const got = await resolveArtist(fake([...names]), typed);
     assert.deepEqual(got!.alternatives.map((a) => a.name), [], `${typed}: a short word one letter off, or its plural, isn't offered`);
   }
   assert.equal(await resolveArtist(fake(["Dex"]), "Dax"), null);
+  const sun = await resolveArtist(fake(["Sun", "Suns", "The Suns of Light"]), "Sun");
+  assert.deepEqual(sun!.alternatives.map((a) => a.name), ["Suns"], "a plural of the same length is offered, a longer name isn't");
 });
