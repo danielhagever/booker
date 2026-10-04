@@ -64,7 +64,7 @@ test("acts with a note in brackets on Qloo's live answers get the act a reasonab
     const got = r ? r.entity.name : "none";
     if (!want(got)) wrong.push(`${input} -> ${got}`);
   }
-  assert.equal(count, 40);
+  assert.equal(count, 41);
   assert.deepEqual(wrong, []);
 });
 
