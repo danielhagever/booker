@@ -219,6 +219,12 @@ test("two acts joined by & or and in a list are both used when each is an exact 
   const counted = { search: async (query: string) => (searches++, db[query] ?? []) } as any;
   await resolveArtists(counted, ["Mumford & Son", "Hall & Oate", "Simon & Garfunkle", "Hootie & the Blowfis"].map((name) => ({ name })), 8);
   assert.equal(searches, 4 + 2 * 2);
+  // A joined name that already reached a duo ("Mumford & Son": Mumford & Sons) isn't tried, so a real pair later gets its try.
+  db["Mumford & Son"] = [art("m", "Mumford & Sons")];
+  db["Hall & Oate"] = [art("h", "Hall & Oates")];
+  db["Lucy Dacus & Julien Baker"] = [art("7", "Lucy Dacus")];
+  const later = await resolveArtists(q, ["Mumford & Son", "Hall & Oate", "Waxahatchee & Snail Mail", "Lucy Dacus & Julien Baker"].map((name) => ({ name })), 8);
+  assert.deepEqual(later.found.map((x) => x.entity.name), ["Mumford & Sons", "Hall & Oates", "Waxahatchee", "Snail Mail", "Lucy Dacus", "Julien Baker"]);
   // Never past the most names a search takes, and never for the one artist of a tour.
   assert.deepEqual((await resolveArtists(q, [{ name: "Waxahatchee & Snail Mail" }], 1)).found.map((x) => x.entity.name), ["Snail Mail"]);
   assert.deepEqual((await resolveArtists(q, [{ name: "Waxahatchee & Snail Mail" }])).found.map((x) => x.entity.name), ["Snail Mail"]);

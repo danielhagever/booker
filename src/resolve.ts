@@ -278,9 +278,10 @@ export function chooseVenue(input: string, found: Entity[]): { pick: Entity; exa
     for (const n of named) {
       const rest = afterName(typed, n);
       if (!rest || !place(rest).length || !place(rest).every((w) => !anyPlace.has(w) || loc.all.has(w))) continue;
-      // A short connecting word ("on Chestnut" isn't a typo of "of") is never such a typo.
+      // A short or small word counts only as itself ("Music Hall of Wiliamsburg"; "on Chestnut" isn't "of").
       const first = rest[0];
-      const goesOn = first.length >= 3 && !SMALL.has(first) && found.some((o) => { const w = words(o.name); return o !== e && w.length > n.length && n.every((x, i) => w[i] === x) && (w[n.length].startsWith(first) || typoDistance(first, w[n.length]) <= 1); });
+      const close = (next: string) => next === first || (first.length >= 3 && !SMALL.has(first) && (next.startsWith(first) || typoDistance(first, next) <= 1));
+      const goesOn = found.some((o) => { const w = words(o.name); return o !== e && w.length > n.length && n.every((x, i) => w[i] === x) && close(w[n.length]); });
       if (goesOn) continue;
       opens = Math.max(opens, place(rest).some((w) => w !== "city" && loc.all.has(w)) ? 2 : 1);
     }

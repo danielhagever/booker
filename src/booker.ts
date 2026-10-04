@@ -120,7 +120,9 @@ export async function resolveArtists(q: Qloo, names: Named[], max = 0): Promise<
     const join = [...name.matchAll(/\s+(?:&|and|\+)\s+/gi)].pop();
     if (id || !join || r?.match === "exact") continue;
     const parts = [name.slice(0, join.index), name.slice(join.index! + join[0].length)].map((x) => x.trim());
-    if (parts.some((x) => x.length < 2)) continue;
+    // Tried only when the joined name found nothing or fell to one of its parts ("Mumford & Son" already
+    // reached Mumford & Sons), so a try isn't spent where a split can't help.
+    if (parts.some((x) => x.length < 2) || (r && !parts.some((x) => nameKey(x) === nameKey(r.entity.name)))) continue;
     tries++;
     const both = await Promise.all(parts.map((x) => one({ name: x })));
     if (both.every((b) => b?.match === "exact") && (!r || both.some((b) => b!.entity.id === r.entity.id))) {

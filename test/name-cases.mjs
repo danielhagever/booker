@@ -1,4 +1,4 @@
-// 374 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
+// 378 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
 // the answer a reasonable person expects. Built by an independent review that ran them through ten versions
 // of the matcher; every one of these was right in at least one version, and all are right now.
 export default async function ({ place, art, runVenue, runArtist, runSplit, is, starts, eqList }) {
@@ -434,4 +434,9 @@ export default async function ({ place, art, runVenue, runArtist, runSplit, is, 
   const mh = () => [P("Music Hall of Williamsburg", "Brooklyn", "New York"), P("The Music Hall", "Portsmouth", "New Hampshire", ["Concert hall"])];
   await runVenue("The Music Hall on Chestnut, Portsmouth", mh(), notExactWrong("The Music Hall", "Portsmouth"));
   await runVenue("Music Hall on Chestnut Street", mh(), notExactWrong("The Music Hall", "Portsmouth"));
+  // Pass 44: a short word that IS how the longer name goes on still counts ("of", "at", "de").
+  await runVenue("Music Hall of Wiliamsburg", mh(), notExactWrong("Music Hall of Williamsburg", "Brooklyn"));
+  await runVenue("Theatre at Ace Hotell, Los Angeles", [P("The Theatre", "Los Angeles", "California"), P("The Theatre at Ace Hotel", "Los Angeles", "California")], notExactWrong("The Theatre at Ace Hotel", "Los Angeles"));
+  await runVenue("House of Bluez, Chicago", [P("The House", "Chicago", "Illinois", ["Bar"]), P("House of Blues", "Chicago", "Illinois")], notExactWrong("House of Blues", "Chicago"));
+  await runVenue("Club de Vile, Austin", [P("Club", "Austin", "Texas", ["Night club"]), P("Club de Ville", "Austin", "Texas", ["Bar", "Live music venue"])], notExactWrong("Club de Ville", "Austin"));
 }
