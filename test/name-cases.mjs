@@ -1,4 +1,4 @@
-// 462 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
+// 463 realistic inputs for name matching (venues typed with and without their city, artists, lists), each with
 // the answer a reasonable person expects. Built by an independent review that ran them through ten versions
 // of the matcher; every one of these was right in at least one version, and all are right now.
 export default async function ({ place, art, runVenue, runArtist, runSplit, is, starts, eqList }) {
@@ -530,6 +530,7 @@ export default async function ({ place, art, runVenue, runArtist, runSplit, is, 
   await runVenue("Mohawk, in Austin", mohawk(), exactIs("Mohawk Austin", "Austin"));
   await runVenue("The Barn, in Lake Hills", [P("The Barn", "Lake in the Hills", "Illinois"), P("The Barn", "Lake Hills", "Washington")], notExactWrong("The Barn", "Lake Hills"));
   await runVenue("Vogue Theatre, IN", vogue(), notExactWrong("Vogue Theatre", "Indianapolis"), "IN closing the text is the state");
+  await runVenue("The Palladium, in UK", [P("The Palladium", "Carmel", "Indiana"), uk("The Palladium", "London", "England", ["Performing arts theater"])], notExactWrong("The Palladium", "London"), "IN before a country other than the US isn't Indiana");
   await runVenue("Vogue Theatre, Broad Ripple, IN USA", [P("Vogue Theatre", "Manistee", "Michigan"), P("Vogue Theatre", "Indianapolis", "Indiana")], notExactWrong("Vogue Theatre", "Indianapolis"));
   await runVenue("The Barn, Pyott Rd, Lake in the Hills", [P("The Barn", "Lake Hills", "Washington"), P("The Barn", "Lake in the Hills", "Illinois")], notExactWrong("The Barn", "Lake in the Hills"));
   const savoy = () => [abroad("Savoy Theatre", "Sydney", "Nova Scotia", "Canada", "CA"), abroad("Savoy Theatre", "Sydney", "New South Wales", "Australia", "AU")];
