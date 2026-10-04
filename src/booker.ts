@@ -102,9 +102,10 @@ const candidate = (e: Entity): Candidate => ({
 // Errors that mean "this one name isn't in Qloo"; anything else stops the search with its real message.
 const notFound = (e: unknown) => e instanceof AppError && (e.status === 400 || e.status === 404);
 
-export async function resolveArtists(q: Qloo, names: Named[], max = 0): Promise<{ found: Resolved[]; missing: string[]; same: string[]; split: string[] }> {
+// spare: the calls the rest of the search still needs, kept back from second searches for names with a note.
+export async function resolveArtists(q: Qloo, names: Named[], max = 0, spare?: number): Promise<{ found: Resolved[]; missing: string[]; same: string[]; split: string[] }> {
   const one = (n: Named) =>
-    (n.id ? resolveChosen(q, n.name, n.id) : resolveArtist(q, n.name)).catch((e) => {
+    (n.id ? resolveChosen(q, n.name, n.id) : resolveArtist(q, n.name, spare)).catch((e) => {
       if (notFound(e)) return null;
       throw e;
     });
@@ -323,7 +324,8 @@ export async function forVenue(
   // 6. The inbox: acts that pitched you, scored against the same crowd and size.
   const inbox: Verdict[] = [];
   if (input.pitches.length) {
-    const p = await resolveArtists(q, input.pitches, MAX_PITCHES);
+    // Pitches come last: only the score, room fans, rivals and the cache write follow (4 calls, and room for retries).
+    const p = await resolveArtists(q, input.pitches, MAX_PITCHES, 8);
     // Scored by taste alone: with the city as a signal Qloo leaves some artists out (measured). Three of
     // Qloo's own picks for this crowd are scored in the same call as a yardstick.
     // When a top pick is itself a pitch, the next pick stands in (the openers if no fit is left); with no

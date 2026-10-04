@@ -44,11 +44,11 @@ test("an act's note in brackets: when the whole text finds nothing like the name
   const q = { search: async (t: string) => (asked.push(t), t === "Wednesday" ? [art("Wednesday"), art("Wednesday 13")] : [art("Lafayette Afro Rock Band")]), byIds: async () => [], budget: { left: () => 48 } } as any;
   assert.equal(show(await resolveArtist(q, "Wednesday (indie rock band)")), "Wednesday closest");
   assert.deepEqual(asked, ["Wednesday (indie rock band)", "Wednesday"]);
-  // Another name in the note is found by the whole text's search, with no second search.
+  // The note is taken as another name only after the name alone was searched too, and found nothing.
   asked.length = 0;
   const alias = { search: async (t: string) => (asked.push(t), t === "Yasiin Bey (Mos Def)" ? [art("Mos Def")] : []), byIds: async () => [], budget: { left: () => 48 } } as any;
   assert.equal(show(await resolveArtist(alias, "Yasiin Bey (Mos Def)")), "Mos Def closest");
-  assert.deepEqual(asked, ["Yasiin Bey (Mos Def)"]);
+  assert.deepEqual(asked, ["Yasiin Bey (Mos Def)", "Yasiin Bey"]);
 });
 
 test("acts with a note in brackets on Qloo's live answers get the act a reasonable person expects", async () => {
@@ -64,7 +64,7 @@ test("acts with a note in brackets on Qloo's live answers get the act a reasonab
     const got = r ? r.entity.name : "none";
     if (!want(got)) wrong.push(`${input} -> ${got}`);
   }
-  assert.equal(count, 14);
+  assert.equal(count, 24);
   assert.deepEqual(wrong, []);
 });
 
@@ -76,4 +76,8 @@ test("the name alone is searched a second time only while the request has calls 
   asked.length = 0;
   assert.equal(show(await resolveArtist(q(20), "Wednesday (indie rock band)")), "none", "with 20 calls left, the rest of the search keeps them");
   assert.deepEqual(asked, ["Wednesday (indie rock band)"]);
+  // Pitches come last, when the rest of the search needs only a few calls.
+  asked.length = 0;
+  assert.equal(show(await resolveArtist(q(9), "Wednesday (indie rock band)", 8)), "Wednesday closest");
+  assert.deepEqual(asked, ["Wednesday (indie rock band)", "Wednesday"]);
 });

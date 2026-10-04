@@ -711,3 +711,27 @@ test("artists: near names are ranked by closeness, and Not it? offers only close
     assert.ok([got!.entity.name, ...got!.alternatives.map((a) => a.name)].includes(offered), `${typed}: ${offered} is picked or offered`);
   }
 });
+
+test("pitches with a note in brackets are still found: they come last, so only the few calls after them are kept back", async () => {
+  const base = standardQloo();
+  // Like live "Wednesday (indie rock band)": the whole text finds an unrelated act; the name alone finds the act.
+  const m = mockFetch((c) => {
+    if (qloo(c) && c.path === "/search" && c.params.get("types") !== "urn:entity:place" && (c.params.get("query") ?? "").includes("("))
+      return { body: { results: [artist(90, "Lafayette Afro Rock Band", 0.5)] } };
+    return base(c);
+  });
+  try {
+    const budget = new Budget(48);
+    budget.used = 3; // /api/venue before forVenue: the day's cache lookup and the hourly gate
+    const r = await forVenue(ENV(memoryKV().kv), budget, {
+      venue: { name: "Empty Bottle, Chicago" },
+      acts: CATALOG.slice(0, 8).map((a) => ({ name: a.name })),
+      pitches: CATALOG.slice(6, 14).map((a) => ({ name: `${a.name} (indie rock band)` })),
+      rising: false,
+    });
+    assert.deepEqual(r.inbox.filter((x) => !x.id).map((x) => x.input), []);
+    assert.ok(budget.used <= 48, `used ${budget.used}`);
+  } finally {
+    m.restore();
+  }
+});
