@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { resolveArtist, resolveVenue } from "../src/resolve.ts";
+import { forSearch, rankNames, resolveArtist, resolveVenue, together, withoutNote } from "../src/resolve.ts";
 import { names } from "../src/input.ts";
 // @ts-ignore: plain JavaScript table
 import cases from "./name-cases.mjs";
@@ -80,4 +80,42 @@ test("the name alone is searched a second time only while the request has calls 
   asked.length = 0;
   assert.equal(show(await resolveArtist(q(9), "Wednesday (indie rock band)", 8)), "Wednesday closest");
   assert.deepEqual(asked, ["Wednesday (indie rock band)", "Wednesday"]);
+});
+
+// Booker's copy of the note rules is the same code as Newcomer's; the whole recorded table runs here too, so a change
+// to this copy is caught here (only its act rows go through resolveArtist above).
+test("notes in brackets on Qloo's live answers: every recorded input gets the entry a reasonable person expects", async () => {
+  const { T } = await import("./note-cases.mjs" as string);
+  const F = JSON.parse(readFileSync(new URL("./note-fixtures.json", import.meta.url), "utf8"));
+  const label = (e: any) => `${e.name}${e.disambiguation && e.disambiguation.toLowerCase() !== e.name.toLowerCase() ? ` (${e.disambiguation})` : ""}`;
+  const wrong: string[] = [];
+  for (const [input, kind, want] of T) {
+    const whole = F[`${kind}|${forSearch(input)}`];
+    let r = rankNames(whole, input);
+    if (withoutNote(input) !== input && (!r || r.searchName)) r = rankNames(together(whole, F[`${kind}|${withoutNote(input)}`]), input);
+    const got = r ? label(r.pick) : "none";
+    if (!want(got)) wrong.push(`${input} -> ${got}`);
+  }
+  assert.equal(T.length, 181);
+  assert.deepEqual(wrong, []);
+});
+
+test("a number word after a part word is searched as a digit", () => {
+  assert.equal(forSearch("Star Wars (Episode One)"), "Star Wars (Episode 1)");
+  assert.equal(forSearch("Fast & Furious (Fast Five)"), "Fast & Furious (Fast Five)");
+});
+
+test("Not it? with a note: the note's own titles first, otherwise only entries holding the name (Qloo's live answers)", () => {
+  const F = JSON.parse(readFileSync(new URL("./note-fixtures.json", import.meta.url), "utf8"));
+  const offers = (input: string, kind: string) => {
+    const r = rankNames(together(F[`${kind}|${forSearch(input)}`], F[`${kind}|${withoutNote(input)}`]), input)!;
+    return r.list.filter((e) => e !== r.pick && r.offered(e)).map((e) => e.name);
+  };
+  assert.equal(offers("Fast & Furious (Fast Five)", "movie")[0], "Fast Five");
+  assert.equal(offers("Better Call Saul (Breaking Bad)", "tv_show")[0], "Breaking Bad");
+  assert.equal(offers("Whitney (Whitney Houston)", "movie")[0], "Whitney Houston: I Wanna Dance with Somebody");
+  for (const [input, kind] of [["Dune (Part Two)", "movie"], ["The Godfather (Part II)", "movie"], ["It (Chapter Two)", "movie"]]) {
+    const name = withoutNote(input).toLowerCase().replace(/^the /, "");
+    assert.deepEqual(offers(input, kind).filter((n) => !n.toLowerCase().includes(name)), [], input);
+  }
 });
