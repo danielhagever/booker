@@ -98,7 +98,7 @@ test("notes in brackets on Qloo's live answers: every recorded input gets the en
     if (limit) known.push(input);
     if (!want(got)) wrong.push(input);
   }
-  assert.equal(T.length, 236);
+  assert.equal(T.length, 240);
   // Every miss is a known limit, and every known limit still misses (so a fix there is noticed).
   assert.deepEqual(wrong, known);
 });
