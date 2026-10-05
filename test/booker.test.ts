@@ -5,6 +5,7 @@ import { forArtist, forVenue, sizeOf, fromSize, cityOf, showRooms, resolveArtist
 import { resembles, nameKey, squashed, isRoom, chooseVenue, resolveArtist, resolveVenue } from "../src/resolve.ts";
 import { names, cityList } from "../src/input.ts";
 import { Budget } from "../src/limits.ts";
+import { Qloo } from "../src/qloo.ts";
 import { ENV, UUID, artist, memoryKV, mockFetch, venue, type Call } from "./mock.ts";
 
 const qloo = (c: Call) => c.host === "qloo.test";
@@ -730,6 +731,31 @@ test("pitches with a note in brackets are still found: they come last, so only t
     });
     assert.deepEqual(r.inbox.filter((x) => !x.id).map((x) => x.input), []);
   } finally {
+    m.restore();
+  }
+});
+
+test("a Qloo answer cut off by the time limit is a timeout, never 'not found'", async () => {
+  const m = mockFetch(() => undefined);
+  const mocked = globalThis.fetch;
+  // Headers came, then the time ran out while the answer was still arriving (as a stalled server does in Node).
+  globalThis.fetch = (() => Promise.resolve(new Response(new ReadableStream({ start: (c) => c.error(new DOMException("The operation was aborted due to timeout", "TimeoutError")) }), { status: 200 }))) as typeof fetch;
+  try {
+    await assert.rejects(resolveArtist(new Qloo(ENV(memoryKV().kv), new Budget(48)), "Wednesday"), (e: any) => /took too long/.test(e.message) && e.status === 504);
+  } finally {
+    globalThis.fetch = mocked;
+    m.restore();
+  }
+});
+
+test("an answer that isn't JSON (a gateway's error page) is reported with Qloo's status, not as a timeout", async () => {
+  const m = mockFetch(() => undefined);
+  const mocked = globalThis.fetch;
+  globalThis.fetch = (() => Promise.resolve(new Response("<html>502 Bad Gateway</html>", { status: 502 }))) as typeof fetch;
+  try {
+    await assert.rejects(resolveArtist(new Qloo(ENV(memoryKV().kv), new Budget(48)), "Wednesday"), (e: any) => /Qloo answered 502/.test(e.message) && e.status === 502);
+  } finally {
+    globalThis.fetch = mocked;
     m.restore();
   }
 });

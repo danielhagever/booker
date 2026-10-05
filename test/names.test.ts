@@ -98,7 +98,7 @@ test("notes in brackets on Qloo's live answers: every recorded input gets the en
     if (limit) known.push(input);
     if (!want(got)) wrong.push(input);
   }
-  assert.equal(T.length, 279);
+  assert.equal(T.length, 296);
   // Every miss is a known limit, and every known limit still misses (so a fix there is noticed).
   assert.deepEqual(wrong, known);
 });
@@ -119,6 +119,7 @@ test("Not it? with a note: the note's own titles first, otherwise only entries h
   assert.equal(offers("Whitney (Whitney Houston)", "movie")[0], "Whitney Houston: I Wanna Dance with Somebody");
   assert.equal(offers("Fear the Walking Dead (The Walking Dead)", "tv_show")[0], "The Walking Dead");
   assert.equal(offers("That '90s Show (That '70s Show)", "tv_show")[0], "That '70s Show");
+  assert.equal(offers("Halloween (Halloween Kills)", "movie")[0], "Halloween Kills"); // a known limit: the title is offered first
   for (const [input, kind] of [["Dune (Part Two)", "movie"], ["The Godfather (Part II)", "movie"], ["It (Chapter Two)", "movie"], ["Rambo (First Blood)", "movie"]]) {
     const name = withoutNote(input).toLowerCase().replace(/^the /, "");
     assert.deepEqual(offers(input, kind).filter((n) => !n.toLowerCase().includes(name)), [], input);
