@@ -98,7 +98,7 @@ test("notes in brackets on Qloo's live answers: every recorded input gets the en
     if (limit) known.push(input);
     if (!want(got)) wrong.push(input);
   }
-  assert.equal(T.length, 254);
+  assert.equal(T.length, 261);
   // Every miss is a known limit, and every known limit still misses (so a fix there is noticed).
   assert.deepEqual(wrong, known);
 });
@@ -119,9 +119,10 @@ test("Not it? with a note: the note's own titles first, otherwise only entries h
   assert.equal(offers("Whitney (Whitney Houston)", "movie")[0], "Whitney Houston: I Wanna Dance with Somebody");
   assert.equal(offers("Fear the Walking Dead (The Walking Dead)", "tv_show")[0], "The Walking Dead");
   assert.equal(offers("That '90s Show (That '70s Show)", "tv_show")[0], "That '70s Show");
-  for (const [input, kind] of [["Dune (Part Two)", "movie"], ["The Godfather (Part II)", "movie"], ["It (Chapter Two)", "movie"]]) {
+  for (const [input, kind] of [["Dune (Part Two)", "movie"], ["The Godfather (Part II)", "movie"], ["It (Chapter Two)", "movie"], ["Rambo (First Blood)", "movie"]]) {
     const name = withoutNote(input).toLowerCase().replace(/^the /, "");
     assert.deepEqual(offers(input, kind).filter((n) => !n.toLowerCase().includes(name)), [], input);
+    assert.equal(new Set(offers(input, kind)).size, offers(input, kind).length, `${input}: offered twice`);
   }
 });
 
@@ -133,6 +134,8 @@ test("a number-only note counts titles starting with the name by year, but not t
   assert.equal(pick("Rocky (2)", [film("Rocky", "1976"), film("Rocky III", "1982"), film("Rocky IV", "1985")]), "Rocky (1976)");
   assert.equal(pick("The Matrix (2)", [film("The Matrix", "1999"), film("The Making of The Matrix", "2001"), film("The Matrix Reloaded", "2003")]), "The Matrix Reloaded (2003)");
   assert.equal(pick("Toy Story (1)", [film("Toy Story That Time Forgot", "2014"), film("Toy Story", "1995")]), "Toy Story (1995)");
+  assert.equal(pick("Mission: Impossible (Dead Reckoning)", [film("Mission: Impossible - Dead Reckoning Part One", "2023"), film("Dead Reckoning", "1947")]), "Mission: Impossible - Dead Reckoning Part One (2023)");
+  assert.equal(pick("Mission: Impossible (Dead Reckoning film)", [film("Mission: Impossible - Dead Reckoning", "2023"), film("Dead Reckoning", "1947")]), "Mission: Impossible - Dead Reckoning (2023)");
   assert.equal(pick("The Hunger Games (3)", [film("The Hunger Games: Mockingjay - Part 2", "2015"), film("The Hunger Games", "2012"), film("The Hunger Games: Catching Fire", "2013"), film("The Hunger Games: Mockingjay - Part 1", "2014")]), "The Hunger Games: Mockingjay - Part 1 (2014)");
   assert.equal(pick("Fantastic 4 (2)", [film("Fantastic Four: Rise of the Silver Surfer", "2007"), film("The Fantastic Four: First Steps", "2025")]), "Fantastic Four: Rise of the Silver Surfer (2007)");
   assert.equal(pick("The Matrix (2)", [film("The Matrix", "1999"), film("The Matrix Resurrections", "2021"), film("The Matrix Reloaded", "2003")]), "The Matrix Reloaded (2003)");
