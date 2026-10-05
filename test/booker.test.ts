@@ -741,7 +741,9 @@ test("a Qloo answer cut off by the time limit is a timeout, never 'not found'", 
   // Headers came, then the time ran out while the answer was still arriving (as a stalled server does in Node).
   globalThis.fetch = (() => Promise.resolve(new Response(new ReadableStream({ start: (c) => c.error(new DOMException("The operation was aborted due to timeout", "TimeoutError")) }), { status: 200 }))) as typeof fetch;
   try {
-    await assert.rejects(resolveArtist(new Qloo(ENV(memoryKV().kv), new Budget(48)), "Wednesday"), (e: any) => /took too long/.test(e.message) && e.status === 504);
+    const q = new Qloo(ENV(memoryKV().kv), new Budget(48));
+    await assert.rejects(resolveArtist(q, "Wednesday"), (e: any) => /took too long/.test(e.message) && e.status === 504);
+    assert.deepEqual(q.calls.map((c) => c.status), [0]); // still listed among the calls
   } finally {
     globalThis.fetch = mocked;
     m.restore();

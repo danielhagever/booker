@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { after, forSearch, rankNames, resolveArtist, resolveVenue, together, withoutNote } from "../src/resolve.ts";
+import { abbreviates, abbreviations, after, forSearch, rankNames, resolveArtist, resolveVenue, together, withoutNote } from "../src/resolve.ts";
 import { names } from "../src/input.ts";
 // @ts-ignore: plain JavaScript table
 import cases from "./name-cases.mjs";
@@ -64,7 +64,7 @@ test("acts with a note in brackets on Qloo's live answers get the act a reasonab
     const got = r ? r.entity.name : "none";
     if (!want(got)) wrong.push(`${input} -> ${got}`);
   }
-  assert.equal(count, 41);
+  assert.equal(count, 43);
   assert.deepEqual(wrong, []);
 });
 
@@ -98,7 +98,7 @@ test("notes in brackets on Qloo's live answers: every recorded input gets the en
     if (limit) known.push(input);
     if (!want(got)) wrong.push(input);
   }
-  assert.equal(T.length, 296);
+  assert.equal(T.length, 322);
   // Every miss is a known limit, and every known limit still misses (so a fix there is noticed).
   assert.deepEqual(wrong, known);
 });
@@ -149,6 +149,12 @@ test("how a title goes on after the name: a separator, a \"!\" or \"?\" before m
   assert.equal(after("Are You Being Served? Again!", ["are", "you", "being", "served"]), "sep");
   assert.equal(after("Mamma Mia!", ["mamma", "mia"]), "end"); // nothing after the "!"
   assert.equal(after("Yo! MTV Raps", ["yo", "mtv", "raps"]), "end"); // a "!" inside the name
+  assert.ok(abbreviates("svu", "Law & Order: Special Victims Unit") && abbreviates("tng", "Star Trek: The Next Generation"));
+  assert.ok(!abbreviates("s", "Law & Order: Special Victims Unit")); // one letter is not an abbreviation
+  assert.deepEqual([...abbreviations("Law & Order SVU")], ["svu"]);
+  assert.deepEqual([...abbreviations("Harry S. Truman")], []); // one capital is a person's initial
+  assert.deepEqual([...abbreviations("AMY WINEHOUSE")], []); // a note wholly in capitals says nothing
+  assert.deepEqual([...abbreviations("SVU")], ["svu"]);
   let n = 0;
   const film = (name: string, year: string) => ({ id: `t${++n}`, name, types: ["urn:entity:movie"], disambiguation: year });
   const pick = (input: string, found: any[]) => { const r = rankNames(found, input); return r ? `${r.pick.name} (${r.pick.disambiguation})` : "none"; };
