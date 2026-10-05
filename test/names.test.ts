@@ -98,7 +98,7 @@ test("notes in brackets on Qloo's live answers: every recorded input gets the en
     if (limit) known.push(input);
     if (!want(got)) wrong.push(input);
   }
-  assert.equal(T.length, 338);
+  assert.equal(T.length, 345);
   // Every miss is a known limit, and every known limit still misses (so a fix there is noticed).
   assert.deepEqual(wrong, known);
 });
@@ -174,6 +174,11 @@ test("how a title goes on after the name: a separator, a \"!\" or \"?\" before m
   // the film is offered too); a record with another note in brackets is another name (Qloo's answers for "Mos Def").
   const dune = rankNames(F["book|Dune"], "Dune")!;
   assert.deepEqual([dune.pick.name, dune.match], ["Dune (Dune, #1)", "closest"]);
+  const typed = rankNames(F["book|Dune (Dune, #1)"], "Dune (Dune, #1)")!; // the whole text is exactly that name
+  assert.deepEqual([typed.pick.name, typed.match], ["Dune (Dune, #1)", "exact"]);
+  const goodreads = rankNames(F["book|Cross Fire (Alex Cross, #17)"], "Cross Fire (Alex Cross, #17)")!; // no one-letter word in it
+  assert.deepEqual([goodreads.pick.name, goodreads.match], ["Cross Fire (Alex Cross, #17)", "exact"]);
+  assert.ok(credits(["j", "r", "r", "tolkien"], "1937, J.R.R. Tolkien")); // initials written apart
   const mos = rankNames(F["artist|Mos Def"], "Mos Def")!;
   assert.deepEqual([mos.pick.name, mos.match], ["Mos Def", "exact"]);
 });
