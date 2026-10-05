@@ -98,7 +98,7 @@ test("notes in brackets on Qloo's live answers: every recorded input gets the en
     if (limit) known.push(input);
     if (!want(got)) wrong.push(input);
   }
-  assert.equal(T.length, 205);
+  assert.equal(T.length, 211);
   // Every miss is a known limit, and every known limit still misses (so a fix there is noticed).
   assert.deepEqual(wrong, known);
 });
@@ -114,7 +114,7 @@ test("Not it? with a note: the note's own titles first, otherwise only entries h
     const r = rankNames(together(F[`${kind}|${forSearch(input)}`], F[`${kind}|${withoutNote(input)}`]), input)!;
     return r.list.filter((e) => e !== r.pick && r.offered(e)).map((e) => e.name);
   };
-  assert.equal(offers("Fast & Furious (Fast Five)", "movie")[0], "Fast Five");
+  assert.equal(offers("Chicago P.D. (Chicago Fire)", "tv_show")[0], "Chicago Fire");
   assert.equal(offers("Better Call Saul (Breaking Bad)", "tv_show")[0], "Breaking Bad");
   assert.equal(offers("Whitney (Whitney Houston)", "movie")[0], "Whitney Houston: I Wanna Dance with Somebody");
   assert.equal(offers("Fear the Walking Dead (The Walking Dead)", "tv_show")[0], "The Walking Dead");
@@ -125,7 +125,7 @@ test("Not it? with a note: the note's own titles first, otherwise only entries h
   }
 });
 
-test("a number-only note counts titles holding the name by year, but not titles numbered otherwise (real titles)", () => {
+test("a number-only note counts titles starting with the name by year, but not titles numbered otherwise (real titles)", () => {
   let n = 0;
   const film = (name: string, year: string) => ({ id: `f${++n}`, name, types: ["urn:entity:movie"], disambiguation: year });
   const pick = (input: string, found: any[]) => { const r = rankNames(found, input); return r ? `${r.pick.name} (${r.pick.disambiguation})` : "none"; };
@@ -133,5 +133,6 @@ test("a number-only note counts titles holding the name by year, but not titles 
   assert.equal(pick("Rocky (2)", [film("Rocky", "1976"), film("Rocky III", "1982"), film("Rocky IV", "1985")]), "Rocky (1976)");
   assert.equal(pick("The Matrix (2)", [film("The Matrix", "1999"), film("The Making of The Matrix", "2001"), film("The Matrix Reloaded", "2003")]), "The Matrix Reloaded (2003)");
   assert.equal(pick("Toy Story (1)", [film("Toy Story That Time Forgot", "2014"), film("Toy Story", "1995")]), "Toy Story (1995)");
+  assert.equal(pick("Twilight (2)", [film("Inside Out 2", "2024"), film("Twilight", "2008"), film("The Twilight Saga: New Moon", "2009")]), "The Twilight Saga: New Moon (2009)");
   assert.equal(pick("The Matrix (2)", [film("Dark City", "1998"), film("The Matrix", "1999"), film("The Matrix Reloaded", "2003")]), "The Matrix Reloaded (2003)");
 });
