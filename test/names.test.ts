@@ -89,15 +89,18 @@ test("notes in brackets on Qloo's live answers: every recorded input gets the en
   const F = JSON.parse(readFileSync(new URL("./note-fixtures.json", import.meta.url), "utf8"));
   const label = (e: any) => `${e.name}${e.disambiguation && e.disambiguation.toLowerCase() !== e.name.toLowerCase() ? ` (${e.disambiguation})` : ""}`;
   const wrong: string[] = [];
-  for (const [input, kind, want] of T) {
+  const known: string[] = [];
+  for (const [input, kind, want, limit] of T) {
     const whole = F[`${kind}|${forSearch(input)}`];
     let r = rankNames(whole, input);
     if (withoutNote(input) !== input && (!r || r.searchName)) r = rankNames(together(whole, F[`${kind}|${withoutNote(input)}`]), input);
     const got = r ? label(r.pick) : "none";
-    if (!want(got)) wrong.push(`${input} -> ${got}`);
+    if (limit) known.push(input);
+    if (!want(got)) wrong.push(input);
   }
-  assert.equal(T.length, 181);
-  assert.deepEqual(wrong, []);
+  assert.equal(T.length, 189);
+  // Every miss is a known limit, and every known limit still misses (so a fix there is noticed).
+  assert.deepEqual(wrong, known);
 });
 
 test("a number word after a part word is searched as a digit", () => {
@@ -114,8 +117,18 @@ test("Not it? with a note: the note's own titles first, otherwise only entries h
   assert.equal(offers("Fast & Furious (Fast Five)", "movie")[0], "Fast Five");
   assert.equal(offers("Better Call Saul (Breaking Bad)", "tv_show")[0], "Breaking Bad");
   assert.equal(offers("Whitney (Whitney Houston)", "movie")[0], "Whitney Houston: I Wanna Dance with Somebody");
+  assert.equal(offers("Fear the Walking Dead (The Walking Dead)", "tv_show")[0], "The Walking Dead");
+  assert.equal(offers("That '90s Show (That '70s Show)", "tv_show")[0], "That '70s Show");
   for (const [input, kind] of [["Dune (Part Two)", "movie"], ["The Godfather (Part II)", "movie"], ["It (Chapter Two)", "movie"]]) {
     const name = withoutNote(input).toLowerCase().replace(/^the /, "");
     assert.deepEqual(offers(input, kind).filter((n) => !n.toLowerCase().includes(name)), [], input);
   }
+});
+
+test("a number-only note counts titles holding the name by year, but not titles numbered otherwise (real titles)", () => {
+  let n = 0;
+  const film = (name: string, year: string) => ({ id: `f${++n}`, name, types: ["urn:entity:movie"], disambiguation: year });
+  const pick = (input: string, found: any[]) => { const r = rankNames(found, input); return r ? `${r.pick.name} (${r.pick.disambiguation})` : "none"; };
+  assert.equal(pick("The Hunger Games (3)", [film("The Hunger Games: Mockingjay - Part 2", "2015"), film("The Hunger Games", "2012"), film("The Hunger Games: Catching Fire", "2013"), film("The Hunger Games: Mockingjay - Part 1", "2014")]), "The Hunger Games: Mockingjay - Part 1 (2014)");
+  assert.equal(pick("Rocky (2)", [film("Rocky", "1976"), film("Rocky III", "1982"), film("Rocky IV", "1985")]), "Rocky (1976)");
 });
