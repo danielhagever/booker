@@ -290,25 +290,25 @@ test("a city read as a part of it is searched around its centre even when the ac
   }
 });
 
-test("a city with no score by name is scored around its centre when most rooms there are its own", async () => {
+test("a city with no score by name is scored around its centre, keeping Qloo's rooms for it when its name was read right", async () => {
   // Live: Osaka, Nagoya and Fukuoka had no score for Japanese Breakfast by name and 0.977, 0.952, 0.945 around their
-  // centres; Moscow (read as its trade fair) 0.922 with the Tchaikovsky Concert Hall. A circle that holds mostly another
-  // city's rooms keeps no score (Union City, NJ, would be scored by Manhattan's).
+  // centres; Daly City keeps the Cow Palace, which its 3 km circle misses. Moscow, read as Trade Fair Moscow, was misread:
+  // its rooms come from the circle (the Tchaikovsky Concert Hall, not 2 rooms at Ostankino).
   const MOHAWK = venue(7, "Mohawk", "Austin", "Texas", undefined, 0.95);
   const CHICAGO = [venue(5, "Thalia Hall", "Chicago", "Illinois", undefined, 0.96), venue(6, "Lincoln Hall", "Chicago", "Illinois", undefined, 0.95)];
-  for (const [label, own, d, circleScores, rooms, scoredByName, want] of [
-    ["read as a place inside it", "Trade Fair Austin", "Trade Fair Austin, All-Texas Exhibition Centre, Austin, Texas", true, [MOHAWK], false, { affinity: 0.92, rooms: ["Mohawk"], trace: 'Qloo gave Wednesday no score for "Austin, Texas" (read as Trade Fair Austin); asked again for 10 km around the city centre' }],
-    ["read as itself", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK], false, { affinity: 0.92, rooms: ["Mohawk"] }],
-    ["no score around it either", "Austin", "Austin, Travis County, Texas, United States", false, [MOHAWK], false, { affinity: undefined, rooms: ["Room in Austin"], trace: 'Qloo gave Wednesday no score for "Austin, Texas" (read as Austin), nor for 10 km around its centre' }],
-    ["the circle is mostly another city's", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK, ...CHICAGO], false, { affinity: undefined, rooms: ["Room in Austin"], trace: `Qloo gave Wednesday no score for "Austin, Texas" (read as Austin); 10 km around its centre holds mostly other cities' rooms (Chicago), so it keeps no score` }],
-    ["the circle has no rooms", "Austin", "Austin, Travis County, Texas, United States", true, [], false, { affinity: undefined, rooms: ["Room in Austin"], trace: `Qloo gave Wednesday no score for "Austin, Texas" (read as Austin); 10 km around its centre has none of its own rooms to go by, so it keeps no score` }],
-    ["half the circle's rooms are its own", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK, CHICAGO[0]], false, { affinity: 0.92, rooms: ["Mohawk"] }], // Yonkers: 2 of 4, live
-    ["filed by metro or state", "Austin", "Austin, Travis County, Texas, United States", true, [venue(15, "Shibuya Room", "Shibuya", "Kanto", undefined, 0.95, { metro: "Austin" }), venue(16, "Kadikoy Room", "Kadikoy", "Austin", undefined, 0.94)], false, { affinity: 0.92, rooms: ["Shibuya Room", "Kadikoy Room"] }], // Tokyo's metro, Istanbul's province
-    ["scored by name", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK], true, { affinity: 0.9, rooms: ["Room in Austin"] }],
+  const EL_PASO = [venue(19, "Love Buzz", "El Paso", "Texas", undefined, 0.95, { country: "MX" }), venue(20, "The Reagan", "El Paso", "Texas", undefined, 0.94, { country: "MX" })];
+  for (const [label, own, d, circleScores, rooms, want] of [
+    ["read as a place named after it", "Trade Fair Austin", "Trade Fair Austin, All-Texas Exhibition Centre, Austin, Texas", true, [MOHAWK], { affinity: 0.92, rooms: ["Mohawk"], trace: 'Qloo gave Wednesday no score for "Austin, Texas" (read as Trade Fair Austin); asked again for 10 km around the city centre' }],
+    ["read as itself", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK], { affinity: 0.92, rooms: ["Room in Austin"], notRooms: ["Mohawk"], trace: 'Qloo gave Wednesday no score for "Austin, Texas" (read as Austin); scored for 10 km around the city centre instead (its rooms are Qloo\'s for the city)' }],
+    ["no score around it either", "Austin", "Austin, Travis County, Texas, United States", false, [MOHAWK], { affinity: undefined, rooms: ["Room in Austin"], trace: 'Qloo gave Wednesday no score for "Austin, Texas" (read as Austin), nor for 10 km around its centre' }],
+    ["the circle is mostly another city's", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK, ...CHICAGO], { affinity: undefined, rooms: ["Room in Austin"], trace: `Qloo gave Wednesday no score for "Austin, Texas" (read as Austin); most rooms 10 km around its centre are Chicago's, so it keeps no score` }],
+    ["the circle is mostly across the border", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK, ...EL_PASO], { affinity: undefined, rooms: ["Room in Austin"], trace: `Qloo gave Wednesday no score for "Austin, Texas" (read as Austin); most rooms 10 km around its centre are across the border (El Paso, MX), so it keeps no score` }],
+    ["none of its rooms are recognisably its own: names prove nothing", "Austin", "Austin, Travis County, Texas, United States", true, CHICAGO, { affinity: 0.92, rooms: ["Room in Austin"] }], // Gothenburg's "Göteborgs Stad"
+    ["half its rooms are its own", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK, CHICAGO[0]], { affinity: 0.92, rooms: ["Room in Austin"] }], // Yonkers: 2 of 4, live
   ] as const) {
     const m = mockFetch((c) => {
       if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location.query"))
-        return { body: { results: { entities: scoredByName ? [{ ...artist(10, "Wednesday", 0.955, ["Indie"], 0.9), query: { affinity: 0.9 } }] : [] }, query: { localities: { signal: { name: own, disambiguation: d, location: { lat: 30.33, lon: -97.7 } } } } } };
+        return { body: { results: { entities: [] }, query: { localities: { signal: { name: own, disambiguation: d, location: { lat: 30.33, lon: -97.7 } } } } } };
       if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location"))
         return { body: { results: { entities: circleScores ? [{ ...artist(10, "Wednesday", 0.955, ["Indie"], 0.9), query: { affinity: 0.92 } }] : [] } } };
       if (qloo(c) && insights(c, "urn:entity:place") && c.params.get("filter.location")) return { body: { results: { entities: rooms } } };
@@ -319,42 +319,115 @@ test("a city with no score by name is scored around its centre when most rooms t
       const austin = r.cities[0];
       assert.equal(austin.affinity, want.affinity, label);
       for (const w of want.rooms) assert.ok(austin.rooms.some((x) => x.name === w), `${label}: ${austin.rooms.map((x) => x.name)}`);
+      for (const w of "notRooms" in want ? want.notRooms : []) assert.ok(!austin.rooms.some((x) => x.name === w), `${label}: ${austin.rooms.map((x) => x.name)}`);
       if ("trace" in want) assert.ok(r.trace.some((t) => t.detail === want.trace), `${label}: ${JSON.stringify(r.trace.map((t) => t.detail))}`);
       // A city with no score isn't counted as scored (live: "Scored ... in 5 cities" with 3 unscored).
-      if (want.affinity === undefined) assert.ok(r.trace.some((t) => t.detail.startsWith("Scored Wednesday in 0 cities") && t.detail.includes('; no score for "Austin, Texas"')), label);
-      assert.equal(m.calls.some((c) => c.params.get("signal.location")), !scoredByName, label);
+      if (want.affinity === undefined) assert.ok(r.trace.some((t) => t.step === "Cities" && t.detail.includes('no score for "Austin, Texas"')), label);
     } finally {
       m.restore();
     }
   }
+  // Scored by name: no circle is asked.
+  const m = mockFetch((c) => (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location.query") ? { body: { results: { entities: [{ ...artist(10, "Wednesday", 0.955, ["Indie"], 0.9), query: { affinity: 0.9 } }] }, query: { localities: { signal: { name: "Trade Fair Austin", disambiguation: "Trade Fair Austin, Austin, Texas", location: { lat: 30.33, lon: -97.7 } } } } } } : standardQloo()(c)));
+  try {
+    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Austin, Texas"] });
+    assert.equal(r.cities[0].affinity, 0.9);
+    assert.ok(!m.calls.some((c) => c.params.get("signal.location")));
+  } finally {
+    m.restore();
+  }
 });
 
-test("a circle's rooms are kept only when Qloo files them in the city or its county, in its country (live: Birkenhead reached Liverpool)", async () => {
+test("a room across the border is left out of a city's rooms by name too (live: Windsor, Ontario's began with Detroit's)", async () => {
+  const m = mockFetch((c) =>
+    qloo(c) && insights(c, "urn:entity:place") && c.params.get("filter.location.query")?.startsWith("Austin")
+      ? { body: { results: { entities: [venue(23, "Detroit Hall", "Detroit", "Michigan", undefined, 0.97, { country: "CA" }), venue(7, "Mohawk", "Austin", "Texas", undefined, 0.95)] } } }
+      : standardQloo()(c),
+  );
+  try {
+    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Austin, Texas"] });
+    assert.deepEqual(r.cities[0].rooms.map((x) => x.name), ["Mohawk"]);
+    assert.ok(r.trace.some((t) => t.detail === 'Left out 1 of Qloo\'s rooms for "Austin, Texas" across the border (Detroit, CA)'), JSON.stringify(r.trace.map((t) => t.detail)));
+  } finally {
+    m.restore();
+  }
+});
+
+test("St and Saint are one name: a part spelled Saint is a part, and rooms filed under Saint are the city's (live: St Petersburg)", async () => {
+  const m = mockFetch((c) => {
+    if (c.host === "geocoding-api.open-meteo.com") return { body: { results: [{ id: 9, name: "St. Augustine", admin1: "Florida", country: "United States", country_code: "US", population: 14000, feature_code: "PPLA2", latitude: 29.89, longitude: -81.31 }] } };
+    if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location.query"))
+      return { body: { results: { entities: [artist(10, "Wednesday", 0.955, ["Indie"], 0.9)] }, query: { localities: { signal: { name: "Old Town", disambiguation: "Old Town, Saint Augustine, St. Johns County, Florida, United States", location: { lat: 29.9, lon: -81.31 } } } } } };
+    if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location")) return { body: { results: { entities: [{ ...artist(10, "Wednesday", 0.955, ["Indie"], 0.9), query: { affinity: 0.95 } }] } } };
+    if (qloo(c) && insights(c, "urn:entity:place") && c.params.get("filter.location"))
+      return { body: { results: { entities: [venue(24, "Jax Room", "Jacksonville", "Florida", undefined, 0.97), venue(25, "Saint Room", "Saint Augustine", "Florida", undefined, 0.95)] } } };
+    return standardQloo()(c);
+  });
+  try {
+    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["St. Augustine, Florida"] });
+    assert.ok(r.trace.some((t) => t.detail.startsWith('Qloo read "St. Augustine, Florida" as only Old Town, a part of it; asked again for 3 km')), JSON.stringify(r.trace.map((t) => t.detail)));
+    assert.deepEqual(r.cities[0].rooms.map((x) => x.name), ["Saint Room", "Jax Room"], "the city's own first");
+    assert.equal(r.cities[0].affinity, 0.95, "1 own of 2: not mostly another city's");
+  } finally {
+    m.restore();
+  }
+});
+
+test("a room filed under the start of the city's name is the city's (live: Frankfurt for Frankfurt am Main, Quebec for Québec City)", async () => {
+  const m = mockFetch((c) => {
+    if (c.host === "geocoding-api.open-meteo.com") return { body: { results: [{ id: 8, name: "Frankfurt am Main", admin1: "Hesse", country: "Germany", country_code: "DE", population: 650000, feature_code: "PPLA2", latitude: 50.11, longitude: 8.68 }] } };
+    if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location.query"))
+      return { body: { results: { entities: [artist(10, "Wednesday", 0.955, ["Indie"], 0.9)] }, query: { localities: { signal: { name: "Sachsenhausen", disambiguation: "Sachsenhausen, Frankfurt am Main, Hesse, Germany", location: { lat: 50.1, lon: 8.68 } } } } } };
+    if (qloo(c) && insights(c, "urn:entity:place") && c.params.get("filter.location"))
+      return { body: { results: { entities: [venue(26, "Offenbach Room", "Offenbach", "Hesse", undefined, 0.97, { country: "DE" }), venue(27, "Frank Room", "Frankfurt", "Hesse", undefined, 0.95, { country: "DE" })] } } };
+    return standardQloo()(c);
+  });
+  try {
+    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Frankfurt, Germany"] });
+    assert.deepEqual(r.cities[0].rooms.map((x) => x.name), ["Frank Room", "Offenbach Room"]);
+  } finally {
+    m.restore();
+  }
+});
+
+test("a misread city's circle drops only rooms in another country, and puts the city's own rooms first (live: Ciudad Juárez, Birkenhead)", async () => {
   const rooms = [
+    venue(12, "Thalia Hall", "Chicago", "Illinois", undefined, 0.97), // a neighbour: kept, after the city's own
     venue(7, "Mohawk", "Austin", "Texas", undefined, 0.95),
     venue(8, "Pflugerville Hall", "Pflugerville", "Texas", undefined, 0.94, { county: "Travis County" }), // the city's county
-    venue(14, "Travis Hall", "Travis", "Texas", undefined, 0.935, { county: "Capital Region" }), // filed with the county as its city (Wirral, live)
-    venue(9, "Round Rock Club", "Round Rock", "Texas", undefined, 0.93, { county: "Williamson County" }), // another county
-    venue(11, "Austin Bar", "Austin", "Victoria", undefined, 0.92, { country: "AU" }), // another country
-    venue(12, "Thalia Hall", "Chicago", "Illinois", undefined, 0.91),
-    { ...venue(13, "Unfiled Room", "", "", undefined, 0.9), properties: { address: "1 Main St" } }, // no geocode: kept
-    venue(17, "Far Travis", "Elsewhere", "Somewhere", undefined, 0.89, { county: "Travis County", country: "AU" }), // that county name abroad
-    venue(18, "State Only", "", "Illinois", undefined, 0.88), // filed with a state only: not "nowhere"
+    venue(14, "Travis Hall", "Travis", "Texas", undefined, 0.935), // filed with the county as its city (Birkenhead's "Wirral")
+    venue(15, "Shibuya Room", "Shibuya", "Kanto", undefined, 0.93, { metro: "Austin" }), // the metro (Tokyo's)
+    venue(16, "Kadikoy Room", "Kadikoy", "Austin", undefined, 0.925), // the state (Istanbul's province)
+    venue(21, "Austin City Room", "Austin City", "Texas", undefined, 0.92), // holds the name
+    venue(11, "Austin Bar", "Austin", "Victoria", undefined, 0.91, { country: "AU" }), // another country: dropped
+    venue(22, "San Juan Room", "Austin", "Texas", undefined, 0.9, { country: "PR" }), // Puerto Rico is the US to Qloo
   ];
-  const m = mockFetch((c) => {
+  const h = (c: Call) => {
     if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location.query"))
       return { body: { results: { entities: [artist(10, "Wednesday", 0.955, ["Indie"], 0.9)] }, query: { localities: { signal: { name: "South Congress", disambiguation: "South Congress, Austin, Travis County, Texas, United States", location: { lat: 30.25, lon: -97.75 } } } } } };
     if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location")) return { body: { results: { entities: [{ ...artist(10, "Wednesday", 0.955, ["Indie"], 0.9), query: { affinity: 0.97 } }] } } };
     if (qloo(c) && insights(c, "urn:entity:place") && c.params.get("filter.location")) return { body: { results: { entities: rooms } } };
     return standardQloo()(c);
-  });
+  };
+  const m = mockFetch(h);
   try {
     const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Austin, Texas"] });
-    assert.deepEqual(r.cities[0].rooms.map((x) => x.name), ["Mohawk", "Pflugerville Hall", "Travis Hall", "Unfiled Room"]);
-    assert.equal(r.cities[0].affinity, undefined, "1 of 9 rooms is the city's own: the circle's score isn't used");
-    assert.ok(r.trace.some((t) => t.detail === 'Qloo read "Austin, Texas" as only South Congress, a part of it; asked again for 10 km around the city centre; left out 5 of its rooms, filed in Round Rock and Austin (AU); most rooms there aren\'t the city\'s, so it has no score'), JSON.stringify(r.trace.map((t) => t.detail)));
+    assert.deepEqual(r.cities[0].rooms.map((x) => x.name), ["Mohawk", "Pflugerville Hall", "Travis Hall", "Shibuya Room", "Kadikoy Room", "Austin City Room"]);
+    assert.equal(r.cities[0].affinity, 0.97);
+    assert.ok(r.trace.some((t) => t.detail === 'Qloo read "Austin, Texas" as only South Congress, a part of it; asked again for 10 km around the city centre; left out 1 room across the border (Austin, AU)'), JSON.stringify(r.trace.map((t) => t.detail)));
   } finally {
     m.restore();
+  }
+  // Mostly across the border, as Ciudad Juárez's circle is El Paso's: no score, though the circle has one.
+  const abroad = [venue(7, "Mohawk", "Austin", "Texas", undefined, 0.95), venue(19, "Love Buzz", "El Paso", "Texas", undefined, 0.95, { country: "MX" }), venue(20, "The Reagan", "El Paso", "Texas", undefined, 0.94, { country: "MX" })];
+  const j = mockFetch((c) => (qloo(c) && insights(c, "urn:entity:place") && c.params.get("filter.location") ? { body: { results: { entities: abroad } } } : h(c)));
+  try {
+    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Austin, Texas"] });
+    assert.equal(r.cities[0].affinity, undefined);
+    assert.deepEqual(r.cities[0].rooms.map((x) => x.name), ["Mohawk"]);
+    assert.ok(r.trace.some((t) => t.detail.endsWith("; left out 2 rooms across the border (El Paso, MX); most rooms there are across the border, so it has no score")), JSON.stringify(r.trace.map((t) => t.detail)));
+  } finally {
+    j.restore();
   }
 });
 
