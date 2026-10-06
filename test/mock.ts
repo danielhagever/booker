@@ -28,7 +28,7 @@ export function mockFetch(handler: Handler) {
 
 export const CITIES: Record<string, any> = {
   chicago: { id: 4887398, name: "Chicago", latitude: 41.85, longitude: -87.65, country_code: "US", admin1: "Illinois", country: "United States", population: 2720546 },
-  austin: { id: 4671654, name: "Austin", latitude: 30.267, longitude: -97.743, country_code: "US", admin1: "Texas", country: "United States", population: 960000 },
+  austin: { id: 4671654, name: "Austin", latitude: 30.267, longitude: -97.743, country_code: "US", admin1: "Texas", admin2: "Travis", country: "United States", population: 960000 },
   asheville: { id: 4453066, name: "Asheville", latitude: 35.6, longitude: -82.55, country_code: "US", admin1: "North Carolina", country: "United States", population: 94589 },
 };
 
@@ -53,14 +53,14 @@ export function artist(n: number, name: string, popularity: number, genres: stri
   };
 }
 
-export function venue(n: number, name: string, city: string, region: string, categories = ["Bar", "Live music venue"], affinity?: number) {
+export function venue(n: number, name: string, city: string, region: string, categories = ["Bar", "Live music venue"], affinity?: number, geo: { county?: string; country?: string; metro?: string } = {}) {
   return {
     entity_id: UUID(n),
     name,
     types: ["urn:entity:place"],
     popularity: 0.99,
     location: { lat: 41.9 + n / 1000, lon: -87.68 },
-    properties: { address: `${n} Main St ${city}`, geocode: { city, admin1_region: region, country_code: "US", country: "United States" } },
+    properties: { address: `${n} Main St ${city}`, geocode: { city, admin1_region: region, country_code: geo.country ?? "US", country: "United States", ...(geo.county ? { admin2_region: geo.county } : {}), ...(geo.metro ? { metro: geo.metro } : {}) } },
     tags: categories.map((c) => ({ name: c, type: "urn:tag:category:place" })),
     ...(affinity !== undefined ? { query: { affinity } } : {}),
   };

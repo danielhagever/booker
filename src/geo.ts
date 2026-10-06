@@ -12,6 +12,8 @@ export interface Place {
   name: string; // what the page shows, e.g. "Portland, Maine"
   query: string; // what Qloo is asked for: the same city, spelled out
   population?: number; // Open-Meteo's, which sizes the circle a city is asked for when Qloo misreads its name
+  country?: string; // ISO code, e.g. "US"
+  county?: string; // Open-Meteo's admin2 ("Wirral" for Birkenhead): a room there counts as the city's
   // Set when what came after the comma isn't this city's state or country ("Chicago, Austin"): the city
   // was then taken as the most populous of its name, and the answer says how it was read.
   unmatched?: string;
@@ -130,7 +132,7 @@ function spellings(name: string): string[] {
 }
 
 export async function cityCenter(cache: KVNamespace, budget: Budget, city: string): Promise<Place | null> {
-  const key = `city17:${city.toLowerCase()}`; // city17: with the population, 100 places asked for a region that fits none of 10
+  const key = `city18:${city.toLowerCase()}`; // city18: with the population, country and county
   const hit = await kvGet(cache, budget, key);
   if (hit) return hit as Place;
   // "Newcastle,UK" and "Newcastle , UK" are "Newcastle, UK".
@@ -198,7 +200,8 @@ export async function cityCenter(cache: KVNamespace, budget: Budget, city: strin
   // country code; a state wins over a country code ("Richmond, CA" is California, not Canada).
   const byName = (r: any, part: string) => {
     const own = [r.admin1, r.country].filter(Boolean).map(fold);
-    return regionNames(part).some((n) => own.some((v) => v === n || (n.length > 3 && v.includes(n)))) || COUNTRY_WORDS[part] === fold(r.country_code);
+    // Whole words only: "India" is in "Republic of India", not in "Indiana" (live: "Calcutta, India" was Calcutta, Indiana).
+    return regionNames(part).some((n) => own.some((v) => v === n || (n.length > 3 && ` ${v} `.includes(` ${n} `)))) || COUNTRY_WORDS[part] === fold(r.country_code);
   };
   const byCode = (r: any, part: string) => byName(r, part) || (part.length === 2 && part === fold(r.country_code));
   // French saints are filed with hyphens ("Saint-Étienne", "Saint-Malo"): asked for only when no spelling found
@@ -240,7 +243,7 @@ export async function cityCenter(cache: KVNamespace, budget: Budget, city: strin
   const cityName = r.country_code === "CA" && fold(r.name) === "quebec" && fold(r.admin1) === "quebec" ? `${r.name} City` : r.name;
   const label = `${cityName}${region ? ", " + region : ""}`;
   const typedRegion = rest.filter(Boolean).join(", ");
-  const out: Place = { lat: r.latitude, lon: r.longitude, name: label, query: label, ...(r.population ? { population: Number(r.population) } : {}), ...(typedRegion && !matches.length ? { unmatched: typedRegion } : {}) };
+  const out: Place = { lat: r.latitude, lon: r.longitude, name: label, query: label, ...(r.population ? { population: Number(r.population) } : {}), ...(r.country_code ? { country: String(r.country_code) } : {}), ...(r.admin2 ? { county: String(r.admin2) } : {}), ...(typedRegion && !matches.length ? { unmatched: typedRegion } : {}) };
   await kvPut(cache, budget, key, out, 60 * 60 * 24 * 30);
   return out;
 }

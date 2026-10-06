@@ -464,6 +464,7 @@ export async function forArtist(
     let affinity: number | undefined;
     let qlooCity: string | undefined;
     let where: Where = c.query;
+    let found: Entity[] | undefined; // the rooms of the circle around the city, when it was asked for
     try {
       // How much this city's taste likes the act: the act alone, scored with the city as the signal.
       const r = await q.artists({ entities: [], city: where, only: [a.id], take: 1 });
@@ -471,36 +472,51 @@ export async function forArtist(
       if (r.locality) qlooCity = r.locality.name;
       // Qloo can read a city as somewhere else (live: "Honolulu, Hawaii" as Honolulu County, 756 km off; "Istanbul,
       // Republic of Türkiye" as the country; "Boise, Idaho" as Boise County, 56 km), as one part of it ("London, Ontario"
-      // as Wortley Village, with no score and 2 rooms; "Tokyo, Japan" as Minato, 5 of 6 rooms there), or as a place
-      // inside it, with no score for the act (Moscow as its trade fair). The city Booker located is then asked for by a
-      // circle around its centre the size of the city, for the score and the rooms alike (a fixed 25 km scored Yonkers
-      // and Morrison by Manhattan's and Denver's clubs, live). Measured on 26 city-act pairs where both answer, the
-      // circle's score is within 0.025 of the name's, 0.006 lower on average. A city read as itself with no score keeps
-      // that (Lagos, Yonkers): Qloo leaves an act out of a city's list when its taste there is off.
+      // as Wortley Village, with no score and 2 rooms; "Tokyo, Japan" as Minato, 5 of 6 rooms there), or give the act no
+      // score by the city's name (Moscow, read as its trade fair; Osaka, Nagoya, Fukuoka). The city Booker located is
+      // then asked for by a circle around its centre the size of the city, for the score and the rooms alike. A circle can
+      // reach across a river or a border, so only rooms Qloo files in the city or its county, in its country, are kept
+      // (live: Birkenhead's reached Liverpool's clubs, Ciudad Juárez's El Paso's), and its score is used only when at
+      // least half its rooms are the city's own (Union City, NJ, was scored 0.11 higher by Manhattan's). Measured on 26
+      // city-act pairs where both answer, the circle's score is within 0.025 of the name's, 0.006 lower on average.
       const off = r.locality ? km(r.locality, c) : 0;
       const part = partOfCity(r.locality, c);
-      const inside = affinity === undefined ? namedInside(r.locality, c) : null;
-      if (off > 50 || part || inside) {
+      const misread = off > 50 || !!part;
+      if (misread || affinity === undefined) {
         const radiusKm = cityRadiusKm(c.population);
         const circle = { lat: c.lat, lon: c.lon, radiusM: radiusKm * 1000 };
         const around = (await q.artists({ entities: [], city: circle, only: [a.id], take: 1 })).list.find((x) => x.id === a.id)?.affinity;
-        if (off > 50 || part || around !== undefined) {
-          trace.push({
-            step: "Check",
-            detail: `${off > 50 ? `Qloo read "${c.query}" as ${r.locality!.name.split(",").slice(0, 2).join(",")}, ${Math.round(off)} km away` : part ? `Qloo read "${c.query}" as only ${part}, a part of it` : `Qloo gave ${a.name} no score for "${c.query}" (read as ${inside})`}; asked again for ${radiusKm} km around the city centre`,
-          });
+        const there = await q.venues([a.id], circle, 12);
+        const own = there.filter((v) => inCity(v, c));
+        const kept = there.filter((v) => inCity(v, c) || inCounty(v, c) || filedNowhere(v));
+        const elsewhere = [...new Set(there.filter((v) => !kept.includes(v)).map((v) => (v.city || v.region || v.country || "") + (v.countryCode && c.country && v.countryCode !== c.country ? ` (${v.countryCode})` : "")))].filter(Boolean).slice(0, 2);
+        const trusted = own.length > 0 && own.length * 2 >= there.length;
+        const why = off > 50 ? `Qloo read "${c.query}" as ${r.locality!.name.split(",").slice(0, 2).join(",")}, ${Math.round(off)} km away` : part ? `Qloo read "${c.query}" as only ${part}, a part of it` : `Qloo gave ${a.name} no score for "${c.query}"${r.locality ? ` (read as ${r.locality.name.split(",")[0]})` : ""}`;
+        const leftOut = elsewhere.length ? `; left out ${there.length - kept.length} of its rooms, filed in ${elsewhere.join(" and ")}` : "";
+        if (misread || (trusted && around !== undefined)) {
+          trace.push({ step: "Check", detail: `${why}; asked again for ${radiusKm} km around the city centre${leftOut}${trusted ? "" : "; most rooms there aren't the city's, so it has no score"}` });
           where = circle;
-          affinity = around;
+          found = kept;
+          affinity = trusted ? around : undefined;
           qlooCity = undefined;
           aroundCentre++;
-        } else trace.push({ step: "Check", detail: `Qloo gave ${a.name} no score for "${c.query}" (read as ${inside}), nor for ${radiusKm} km around its centre` });
+        } else
+          trace.push({
+            step: "Check",
+            detail:
+              around === undefined
+                ? `${why}, nor for ${radiusKm} km around its centre`
+                : elsewhere.length
+                  ? `${why}; ${radiusKm} km around its centre holds mostly other cities' rooms (${elsewhere.join(" and ")}), so it keeps no score`
+                  : `${why}; ${radiusKm} km around its centre has none of its own rooms to go by, so it keeps no score`,
+          });
       }
     } catch (e) {
       if (!(e instanceof QlooError && e.code === "locality")) throw e;
       notFoundCities.push(text);
       continue;
     }
-    const rooms = showRooms(await q.venues([a.id], where, 12), 6);
+    const rooms = showRooms(found ?? (await q.venues([a.id], where, 12)), 6);
     const note = c.unmatched ? `"${text}" was read as ${c.name}; "${c.unmatched}" didn't match its state or country, so check this is the city you meant.` : undefined;
     if (note) trace.push({ step: "Check", detail: note });
     cities.push({
@@ -523,7 +539,12 @@ export async function forArtist(
   }
   if (!cities.length) throw new AppError("None of those cities could be placed. Try a city with its state or country, like \"Austin, Texas\".", 400);
   cities.sort((x, y) => (y.affinity ?? -1) - (x.affinity ?? -1));
-  trace.push({ step: "Cities", detail: `Scored ${a.name} in ${n(cities.length, "city", "cities")} with the city as Qloo's signal${aroundCentre ? ` (${aroundCentre} of them as a circle around the centre)` : ""}${notFoundCities.length ? `; not placed: ${notFoundCities.join(", ")}` : ""}` });
+  // Cities Qloo gave no score are named, not counted as scored (live: "Scored ... in 5 cities" with 3 unscored).
+  const unscored = cities.filter((x) => x.affinity === undefined).map((x) => x.input);
+  trace.push({
+    step: "Cities",
+    detail: `Scored ${a.name} in ${n(cities.length - unscored.length, "city", "cities")} with the city as Qloo's signal${aroundCentre ? ` (${aroundCentre} asked as a circle around the centre)` : ""}${unscored.length ? `; no score for ${unscored.map((x) => `"${x}"`).join(", ")}` : ""}${notFoundCities.length ? `; not placed: ${notFoundCities.join(", ")}` : ""}`,
+  });
   trace.push({ step: "Rooms", detail: `Asked Qloo for the live music venues and concert halls in each city whose visitors' taste fits ${a.name}'s fans` });
 
   return {
@@ -535,7 +556,7 @@ export async function forArtist(
     calls: q.calls,
     ours: [
       "Cities are ordered by Qloo's affinity for the act there; a city Qloo has no score for comes last.",
-      "A city Qloo reads as somewhere else (over 50 km away), as only a part of it, or as a place inside it with no score for the act, is scored and searched in a circle around the city's centre sized by its population (3 to 25 km; measured on 26 city-act pairs: within 0.025 of the name's score where both answer, 0.006 lower on average).",
+      "A city Qloo reads as somewhere else (over 50 km away) or as only a part of it, or where it gives the act no score by the city's name, is scored and searched in a circle around the city's centre sized by its population (3 to 25 km). Only rooms Qloo files in the city or its county, in its country, are kept, and the circle's score is used only when at least half its rooms are the city's own (measured on 26 city-act pairs: within 0.025 of the name's score where both answer, 0.006 lower on average).",
     ],
     limits: [
       "Qloo measures taste, not capacity, fees or availability: check that a room's size fits before you pitch it.",
@@ -551,13 +572,19 @@ export async function forArtist(
 // km², from 3 to 25 km (Yonkers 5 km, Honolulu 6, Kyoto 12, Moscow 25). Unknown population: 3 km.
 export const cityRadiusKm = (population?: number) => Math.min(25, Math.max(3, Math.round(Math.sqrt((population ?? 0) / 3000 / Math.PI))));
 
-// A locality not named as the city whose description names the city after its own name: a place inside it (Trade Fair
-// Moscow), or the city or more under another name (São Paulo's region). Asked after partOfCity. Its name, else null.
-function namedInside(locality: { name: string } | undefined, center: { name: string }): string | null {
-  const [own, ...within] = (locality?.name ?? "").split(",").map((x) => nameKey(x));
-  const city = nameKey(center.name.split(",")[0]);
-  return own !== city && within.includes(city) ? locality!.name.split(",")[0].trim() : null;
-}
+// Whether Qloo files a room in the located city (its city, metro or state is named after it: Shibuya's rooms have the
+// metro Tokyo, Kadıköy's the province Istanbul), or in the city's own county (Birkenhead's Future Yard is filed under
+// Wirral), in the same country. Accents and case don't count ("Ciudad Juárez").
+const folded = (s?: string) => nameKey((s ?? "").normalize("NFKD").replace(/[\u0300-\u036f]/g, ""));
+const sameCountry = (v: Entity, c: { country?: string }) => !c.country || !v.countryCode || v.countryCode === c.country;
+const inCity = (v: Entity, c: { name: string; country?: string }) => {
+  const city = folded(c.name.split(",")[0]);
+  return sameCountry(v, c) && [v.city, v.metro, v.region].some((n) => !!n && folded(n).includes(city));
+};
+// A room Qloo files nowhere can't be told apart: it is kept, but doesn't count as the city's own.
+const filedNowhere = (v: Entity) => !v.city && !v.metro && !v.region && !v.county;
+const inCounty = (v: Entity, c: { country?: string; county?: string }) =>
+  !!c.county && sameCountry(v, c) && [v.city, v.county].some((n) => !!n && folded(n).includes(folded(c.county))); // Future Yard's city is "Wirral"
 
 // Qloo can answer a city asked by name with a part of it: "Tokyo, Japan" is Minato ("Minato, Tokyo, ...", one ward)
 // and "London, Ontario" Wortley Village ("Wortley Village, London, ...", live). A locality named after the city is the
