@@ -774,10 +774,15 @@ test("a place Qloo says is closed, or whose name says so, is marked closed (Qloo
     { entity_id: UUID(4), name: "Closed Sessions Bar", types: ["urn:entity:place"] },
     { entity_id: UUID(5), name: "The Closed Door", types: ["urn:entity:place"] },
     { entity_id: UUID(6), name: "Closed - The Old Room", types: ["urn:entity:place"] },
+    { entity_id: UUID(7), name: "CLOSED The Room", types: ["urn:entity:place"] },
+    { entity_id: UUID(8), name: "Closed \u2013 The Room", types: ["urn:entity:place"] },
+    { entity_id: UUID(9), name: "Closed \u2014 The Room", types: ["urn:entity:place"] },
+    { entity_id: UUID(10), name: "Closed: The Room", types: ["urn:entity:place"] },
+    { entity_id: UUID(11), name: "Closed | The Room", types: ["urn:entity:place"] },
   ] } } : undefined));
   try {
-    const found = await new Qloo(ENV(memoryKV().kv), new Budget(48)).search("tacos", "urn:entity:place", 6);
-    assert.deepEqual(found.map((e) => !!e.closed), [true, true, true, false, false, true]); // a bar named "Closed Sessions" is open
+    const found = await new Qloo(ENV(memoryKV().kv), new Budget(48)).search("tacos", "urn:entity:place", 11);
+    assert.deepEqual(found.map((e) => !!e.closed), [true, true, true, false, false, true, true, true, true, true, true]); // a bar named "Closed Sessions" is open
   } finally {
     m.restore();
   }

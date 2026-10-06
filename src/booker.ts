@@ -515,7 +515,7 @@ export async function forArtist(
     ours: ["Cities are ordered by Qloo's affinity for the act there; a city Qloo has no score for comes last."],
     limits: [
       "Qloo measures taste, not capacity, fees or availability: check that a room's size fits before you pitch it.",
-      "Rooms are the places Qloo tags as live music venues or concert halls, in Qloo's order; a place mainly used as a museum, gallery, flea market, film studio or housing (its first categories or its name say so) is left out. Each room shows its main categories: some are classical halls or arenas, so check that a room books your kind of show.",
+      "Rooms are the places Qloo tags as live music venues or concert halls, in Qloo's order; a place mainly used as a museum, gallery, flea market, film studio or housing (its first categories or its name say so), or a closed one (Qloo says so, or its name: \"CLOSED - ...\"), is left out. Each room shows its main categories: some are classical halls or arenas, so check that a room books your kind of show.",
       "A city's score compares the act with everything that city likes; it is a relative signal, not a ticket forecast.",
     ],
     degraded: false,
