@@ -612,6 +612,10 @@ test("rooms: a place mainly used as a museum, gallery or flea market is left out
   // Shops Qloo tags as music rooms stay: in-store shows are shows.
   assert.deepEqual(showRooms(rooms, 14).map((x) => x.name), ["Ryman Auditorium", "The Cavern Club", "The Old Bar", "The O2", "Barbican Centre", "McCabe's Guitar Shop", "The Museum Club", "Third Man Records", "Shuga Records"]);
   assert.deepEqual(showRooms(rooms, 2, "1").map((x) => x.name), ["Handel Hendrix House", "Ryman Auditorium"], "the venue's own room stays");
+  // A closed room isn't one (Qloo keeps them: "CLOSED - Tacos el Cabron", is_closed false, live); the venue asked about stays.
+  const closed = { id: "c", name: "CLOSED - The Old Room", categories: ["Live music venue"], closed: true };
+  assert.deepEqual(showRooms([closed, rooms[1]], 6).map((x) => x.name), [rooms[1].name]);
+  assert.deepEqual(showRooms([closed], 6, "c").map((x) => x.name), ["CLOSED - The Old Room"]);
 });
 
 test("a venue Qloo's search misses with the city is looked up by name alone (seen live: Brooklyn Steel)", async () => {
@@ -758,6 +762,23 @@ test("an answer that isn't JSON (a gateway's error page) is reported with Qloo's
     await assert.rejects(resolveArtist(new Qloo(ENV(memoryKV().kv), new Budget(48)), "Wednesday"), (e: any) => /Qloo answered 502/.test(e.message) && e.status === 502);
   } finally {
     globalThis.fetch = mocked;
+    m.restore();
+  }
+});
+
+test("a place Qloo says is closed, or whose name says so, is marked closed (Qloo's is_closed was false for \"CLOSED - Tacos el Cabron\", live)", async () => {
+  const m = mockFetch((c) => (c.host === "qloo.test" && c.path === "/search" ? { body: { results: [
+    { entity_id: UUID(1), name: "CLOSED - Tacos el Cabron", types: ["urn:entity:place"], properties: { is_closed: false } },
+    { entity_id: UUID(2), name: "The Old Room", types: ["urn:entity:place"], properties: { is_closed: true } },
+    { entity_id: UUID(3), name: "Tacos (Permanently Closed)", types: ["urn:entity:place"] },
+    { entity_id: UUID(4), name: "Closed Sessions Bar", types: ["urn:entity:place"] },
+    { entity_id: UUID(5), name: "The Closed Door", types: ["urn:entity:place"] },
+    { entity_id: UUID(6), name: "Closed - The Old Room", types: ["urn:entity:place"] },
+  ] } } : undefined));
+  try {
+    const found = await new Qloo(ENV(memoryKV().kv), new Budget(48)).search("tacos", "urn:entity:place", 6);
+    assert.deepEqual(found.map((e) => !!e.closed), [true, true, true, false, false, true]); // a bar named "Closed Sessions" is open
+  } finally {
     m.restore();
   }
 });

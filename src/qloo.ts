@@ -26,6 +26,7 @@ export interface Entity {
   countryCode?: string;
   categories?: string[]; // a place's categories (Live music venue, Bar...)
   genres?: string[]; // an artist's music genres
+  closed?: boolean; // Qloo says the place is closed, or its name does ("CLOSED - Tacos el Cabron": is_closed false, live)
 }
 
 export interface Provenance {
@@ -195,6 +196,8 @@ function num(v: unknown): number {
 const CATEGORY = "urn:tag:category:place";
 const GENRE = "urn:tag:genre:music";
 
+// "CLOSED - Tacos el Cabron", "Tacos (Permanently Closed)"; not a bar named "Closed Sessions".
+const closedName = (n: string) => /^\W*CLOSED\b/.test(n) || /^\W*(permanently\s+)?closed\s*[-\u2013\u2014:|]|\((permanently\s+)?closed\)\s*$/i.test(n);
 function toEntity(e: any): Entity {
   const loc = e.location ?? {};
   const geo = e.properties?.geocode ?? {};
@@ -222,5 +225,6 @@ function toEntity(e: any): Entity {
     // Movie theater, Live music venue).
     categories: [...new Set(tags.filter((t) => t.type === CATEGORY).map((t) => t.name))],
     genres: [...new Set(tags.filter((t) => t.type === GENRE).map((t) => t.name))].slice(0, 3),
+    ...(e.properties?.is_closed === true || closedName(String(e.name ?? "")) ? { closed: true } : {}),
   };
 }

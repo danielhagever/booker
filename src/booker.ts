@@ -188,8 +188,9 @@ export const mainlyShows = (r: { name?: string; categories?: string[] }) => {
   if (/\b(housing|apartments)\b/i.test(r.name ?? "")) return false;
   return cats.slice(0, 2).some((c) => SHOW_CATEGORY.test(c)) || !(cats.slice(0, 4).some((c) => MAINLY_ELSE.test(c)) || /\b(museum|gallery)\b/i.test(r.name ?? ""));
 };
-export function showRooms<T extends { id?: string; name?: string; categories?: string[] }>(rooms: T[], keep: number, own?: string): T[] {
-  return rooms.filter((r) => r.id === own || mainlyShows(r)).slice(0, keep);
+// A closed room books nothing (Qloo keeps closed places: "CLOSED - Tacos el Cabron" in San Diego, live, with is_closed false).
+export function showRooms<T extends { id?: string; name?: string; categories?: string[]; closed?: boolean }>(rooms: T[], keep: number, own?: string): T[] {
+  return rooms.filter((r) => r.id === own || (mainlyShows(r) && !r.closed)).slice(0, keep);
 }
 const TASTE_GAP = 0.09;
 
