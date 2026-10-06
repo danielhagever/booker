@@ -159,6 +159,18 @@ function artistInput(body: any) {
   return { artist: { name, ...(id && validId(id) ? { id } : {}) } as Named, cities: cities.list, leftOut: cities.leftOut };
 }
 
+// What a search's saved answer is keyed on, for the page and the MCP tools alike (a tour's cities are located by their
+// folded names, so their case doesn't count).
+const venueKey = (input: ReturnType<typeof venueInput>) => ({ v: input.venue, a: input.acts, p: input.pitches, r: input.rising });
+const artistKey = (input: ReturnType<typeof artistInput>) => ({ a: input.artist, c: input.cities.map((x) => x.toLowerCase()) });
+
+// An MCP tool's answer: the spoken summary with the result's caveats, and the whole result; a failure is an error result.
+const toolAnswer = (spoken: string, r: Parameters<typeof caveats>[0]) => {
+  const notes = caveats(r);
+  return { content: [{ type: "text" as const, text: notes ? `${spoken}\n\n${notes}` : spoken }], structuredContent: { spoken, ...r } };
+};
+const toolError = (e: unknown) => ({ content: [{ type: "text" as const, text: failure(e).message }], isError: true });
+
 function buildServer(env: Env, req: Request): McpServer {
   const server = new McpServer({ name: "booker", version: "0.1.0", title: "Booker: taste-matched booking for independent venues" });
   const named = z.union([z.string().min(1).max(MAX_NAME), z.object({ name: z.string().min(1).max(MAX_NAME), id: z.string().max(40).optional() })]);
@@ -185,13 +197,11 @@ function buildServer(env: Env, req: Request): McpServer {
         return await limited(async (budget, gate) => {
           const input = venueInput(args);
           if (input.venue.name.length < 2 || !input.acts.length) throw new AppError("Name the venue with its city, and at least one act that did well there.", 400);
-          const r = await cached(env, budget, "venue", { v: input.venue, a: input.acts, p: input.pitches, r: input.rising }, () => forVenue(env, budget, input), gate);
-          const s = venueSummary(r);
-          const notes = caveats(r);
-          return { content: [{ type: "text" as const, text: notes ? `${s}\n\n${notes}` : s }], structuredContent: { spoken: s, ...r } };
+          const r = await cached(env, budget, "venue", venueKey(input), () => forVenue(env, budget, input), gate);
+          return toolAnswer(venueSummary(r), r);
         });
       } catch (e) {
-        return { content: [{ type: "text" as const, text: failure(e).message }], isError: true };
+        return toolError(e);
       }
     },
   );
@@ -212,13 +222,11 @@ function buildServer(env: Env, req: Request): McpServer {
         return await limited(async (budget, gate) => {
           const input = artistInput(args);
           if (input.artist.name.length < 1 || !input.cities.length) throw new AppError("Name the artist and at least one city.", 400);
-          const r = await cached(env, budget, "artist", { a: input.artist, c: input.cities.map((x) => x.toLowerCase()) }, () => forArtist(env, budget, input), gate);
-          const s = tourSummary(r);
-          const notes = caveats(r);
-          return { content: [{ type: "text" as const, text: notes ? `${s}\n\n${notes}` : s }], structuredContent: { spoken: s, ...r } };
+          const r = await cached(env, budget, "artist", artistKey(input), () => forArtist(env, budget, input), gate);
+          return toolAnswer(tourSummary(r), r);
         });
       } catch (e) {
-        return { content: [{ type: "text" as const, text: failure(e).message }], isError: true };
+        return toolError(e);
       }
     },
   );
@@ -281,7 +289,7 @@ export default {
       if (input.venue.name.length < 2 || !input.acts.length) return json({ error: "Name your venue with its city, and at least one act that did well there." }, 400);
       const budget = new Budget(REQUEST_BUDGET);
       try {
-        const r = await cached(env, budget, "venue", { v: input.venue, a: input.acts, p: input.pitches, r: input.rising }, () => forVenue(env, budget, input), () => allow(req, "venue", LIMITS.venue, budget));
+        const r = await cached(env, budget, "venue", venueKey(input), () => forVenue(env, budget, input), () => allow(req, "venue", LIMITS.venue, budget));
         return json({ ...r, summary: venueSummary(r), leftOut: input.leftOut });
       } catch (e) {
         const f = failure(e);
@@ -293,7 +301,7 @@ export default {
       if (input.artist.name.length < 1 || !input.cities.length) return json({ error: "Name the artist and at least one city." }, 400);
       const budget = new Budget(REQUEST_BUDGET);
       try {
-        const r = await cached(env, budget, "artist", { a: input.artist, c: input.cities.map((x) => x.toLowerCase()) }, () => forArtist(env, budget, input), () => allow(req, "artist", LIMITS.artist, budget));
+        const r = await cached(env, budget, "artist", artistKey(input), () => forArtist(env, budget, input), () => allow(req, "artist", LIMITS.artist, budget));
         return json({ ...r, summary: tourSummary(r), leftOut: input.leftOut });
       } catch (e) {
         const f = failure(e);
