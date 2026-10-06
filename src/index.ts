@@ -27,7 +27,7 @@ const failure = (e: unknown) => {
 };
 
 // Bump whenever the pipeline or the result format changes, so no one gets yesterday's logic.
-const CACHE_VERSION = 104;
+const CACHE_VERSION = 105;
 
 async function sha(s: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -37,8 +37,9 @@ async function sha(s: string): Promise<string> {
     .join("");
 }
 
-// The key keeps letter case: the name matching reads case ("AMY (AMY WINEHOUSE)", "LAW & ORDER SVU"), and in
+// The key keeps a name's letter case: the name matching reads case ("AMY (AMY WINEHOUSE)", "LAW & ORDER SVU"), and in
 // Newcomer 13 of 523 recorded names changed answer by case, so one spelling can't be answered with another's result.
+// A tour's cities are lower-cased before (they are located by their folded names).
 export const cacheKey = async (kind: string, input: unknown) => `${kind}${CACHE_VERSION}:` + (await sha(JSON.stringify(input)));
 
 // Identical requests are answered from a day's cache (the page says so: the timings in "How we know"
@@ -211,7 +212,7 @@ function buildServer(env: Env, req: Request): McpServer {
         return await limited(async (budget, gate) => {
           const input = artistInput(args);
           if (input.artist.name.length < 1 || !input.cities.length) throw new AppError("Name the artist and at least one city.", 400);
-          const r = await cached(env, budget, "artist", { a: input.artist, c: input.cities }, () => forArtist(env, budget, input), gate);
+          const r = await cached(env, budget, "artist", { a: input.artist, c: input.cities.map((x) => x.toLowerCase()) }, () => forArtist(env, budget, input), gate);
           const s = tourSummary(r);
           const notes = caveats(r);
           return { content: [{ type: "text" as const, text: notes ? `${s}\n\n${notes}` : s }], structuredContent: { spoken: s, ...r } };
@@ -292,7 +293,7 @@ export default {
       if (input.artist.name.length < 1 || !input.cities.length) return json({ error: "Name the artist and at least one city." }, 400);
       const budget = new Budget(REQUEST_BUDGET);
       try {
-        const r = await cached(env, budget, "artist", { a: input.artist, c: input.cities }, () => forArtist(env, budget, input), () => allow(req, "artist", LIMITS.artist, budget));
+        const r = await cached(env, budget, "artist", { a: input.artist, c: input.cities.map((x) => x.toLowerCase()) }, () => forArtist(env, budget, input), () => allow(req, "artist", LIMITS.artist, budget));
         return json({ ...r, summary: tourSummary(r), leftOut: input.leftOut });
       } catch (e) {
         const f = failure(e);

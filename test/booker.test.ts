@@ -248,18 +248,76 @@ test("the same city typed twice is scored once, and the trace says so", async ()
   }
 });
 
-test("a city Qloo reads somewhere else (over 60 km away) is left out, not scored", async () => {
+test("a city Qloo reads somewhere else (over 60 km away) is scored and searched around its centre, not left out", async () => {
+  // Live: "Honolulu, Hawaii" was Honolulu County (756 km off), "Istanbul, Republic of Türkiye" the country, and both
+  // were left out; 25 km around their centres scores them (0.990, 0.951).
   const m = mockFetch((c) => {
     if (qloo(c) && c.path === "/v2/insights" && c.params.get("filter.type") === "urn:entity:artist" && c.params.get("signal.location.query")?.startsWith("Austin"))
-      return { body: { results: { entities: [artist(10, "Wednesday", 0.955, ["Indie"], 0.9)] }, query: { localities: { signal: { name: "Austin, Minnesota", location: { lat: 43.67, lon: -92.97 } } } } } };
+      return { body: { results: { entities: [artist(10, "Wednesday", 0.955, ["Indie"], 0.9)] }, query: { localities: { signal: { name: "Austin", disambiguation: "Austin, Mower County, Minnesota, United States", location: { lat: 43.67, lon: -92.97 } } } } } };
+    if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location"))
+      return { body: { results: { entities: [{ ...artist(10, "Wednesday", 0.955, ["Indie"], 0.9), query: { affinity: 0.97 } }] } } };
     return standardQloo()(c);
   });
   try {
     const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Austin, Texas", "Chicago, Illinois"] });
-    assert.deepEqual(r.notFound, ["Austin, Texas"]);
-    assert.ok(r.trace.some((t) => /Austin, Minnesota/.test(t.detail)));
+    assert.deepEqual(r.notFound, []);
+    const austin = r.cities.find((c) => c.input === "Austin, Texas")!;
+    assert.equal(austin.affinity, 0.97);
+    assert.equal(austin.qlooCity, undefined, "the far place isn't shown as the city");
+    assert.ok(r.trace.some((t) => /^Qloo read "Austin, Texas" as Austin, Mower County, \d+ km away; asked again for 25 km around the city centre$/.test(t.detail)), JSON.stringify(r.trace));
+    assert.ok(r.trace.some((t) => t.detail.startsWith("Scored Wednesday in 2 cities with the city as Qloo's signal (1 of them as 25 km around the centre)")));
+    assert.ok(m.calls.some((c) => insights(c, "urn:entity:place") && /^POINT\(-97/.test(c.params.get("filter.location") ?? "")), "the rooms come from around it too");
   } finally {
     m.restore();
+  }
+});
+
+test("a city read as a part of it is searched around its centre even when the act has no score there either", async () => {
+  const m = mockFetch((c) => {
+    if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location.query"))
+      return { body: { results: { entities: [artist(10, "Wednesday", 0.955, ["Indie"], 0.9)] }, query: { localities: { signal: { name: "South Congress", disambiguation: "South Congress, Austin, Travis County, Texas, United States", location: { lat: 30.25, lon: -97.75 } } } } } };
+    if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location")) return { body: { results: { entities: [] } } };
+    if (qloo(c) && insights(c, "urn:entity:place") && c.params.get("filter.location")) return { body: { results: { entities: [venue(7, "Mohawk", "Austin", "Texas", undefined, 0.95)] } } };
+    return standardQloo()(c);
+  });
+  try {
+    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Austin, Texas"] });
+    assert.equal(r.cities[0].affinity, undefined, "the part's score isn't the city's");
+    assert.deepEqual(r.cities[0].rooms.map((x) => x.name), ["Mohawk"]);
+  } finally {
+    m.restore();
+  }
+});
+
+test("an act with no score for the city's name is scored around its centre; with none there either, the name's rooms stay", async () => {
+  // Live: Moscow (read as its trade fair), Lagos, Mumbai and Osaka gave no score by name and a score around the centre
+  // (Japanese Breakfast 0.922 in Moscow, with the Tchaikovsky Concert Hall instead of 2 rooms at Ostankino).
+  for (const circleScores of [true, false]) {
+    const m = mockFetch((c) => {
+      if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location.query"))
+        return { body: { results: { entities: [] }, query: { localities: { signal: { name: "Trade Fair Austin", disambiguation: "Trade Fair Austin, All-Texas Exhibition Centre, Austin, Texas", location: { lat: 30.33, lon: -97.7 } } } } } };
+      if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location"))
+        return { body: { results: { entities: circleScores ? [{ ...artist(10, "Wednesday", 0.955, ["Indie"], 0.9), query: { affinity: 0.92 } }] : [] } } };
+      if (qloo(c) && insights(c, "urn:entity:place") && c.params.get("filter.location"))
+        return { body: { results: { entities: [venue(7, "Mohawk", "Austin", "Texas", undefined, 0.95)] } } };
+      return standardQloo()(c);
+    });
+    try {
+      const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Austin, Texas"] });
+      const austin = r.cities[0];
+      if (circleScores) {
+        assert.equal(austin.affinity, 0.92);
+        assert.deepEqual(austin.rooms.map((x) => x.name), ["Mohawk"]);
+        assert.ok(r.trace.some((t) => t.detail === 'Qloo gave Wednesday no score for "Austin, Texas" (read as Trade Fair Austin); asked again for 25 km around the city centre'), JSON.stringify(r.trace));
+      } else {
+        assert.equal(austin.affinity, undefined);
+        assert.ok(!austin.rooms.some((x) => x.name === "Mohawk"), "the rooms stay on the city's name");
+        assert.ok(austin.qlooCity?.startsWith("Trade Fair Austin"));
+        assert.ok(r.trace.some((t) => t.detail === 'Qloo gave Wednesday no score for "Austin, Texas" (read as Trade Fair Austin), nor for 25 km around its centre'), JSON.stringify(r.trace));
+      }
+    } finally {
+      m.restore();
+    }
   }
 });
 
@@ -311,7 +369,7 @@ test("only a part of the city is asked again: the city itself or a bigger region
   for (const [name, d, again] of [["Wortley Village", "Wortley Village, Austin, Travis County, Texas, United States", 1], ["Austin", "Austin, Austin, Travis County, Texas, United States", 0], ["Travis County", "Travis County, Texas, United States", 0]] as const) {
     const m = mockFetch((c) => {
       if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location.query")?.startsWith("Austin"))
-        return { body: { results: { entities: [] }, query: { localities: { signal: { name, disambiguation: d, location: { lat: 30.25, lon: -97.75 } } } } } };
+        return { body: { results: { entities: [artist(10, "Wednesday", 0.955, ["Indie"], 0.9)] }, query: { localities: { signal: { name, disambiguation: d, location: { lat: 30.25, lon: -97.75 } } } } } }; // scored, so only the part rule decides
       return standardQloo()(c);
     });
     try {

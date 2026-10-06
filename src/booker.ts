@@ -448,6 +448,7 @@ export async function forArtist(
 
   const notFoundCities: string[] = [];
   const cities: TourResult["cities"] = [];
+  let aroundCentre = 0; // cities asked for by their centre
   for (const text of input.cities) {
     const c = await cityCenter(env.CACHE, budget, text);
     if (!c) {
@@ -467,22 +468,29 @@ export async function forArtist(
       // How much this city's taste likes the act: the act alone, scored with the city as the signal.
       const r = await q.artists({ entities: [], city: where, only: [a.id], take: 1 });
       affinity = r.list.find((x) => x.id === a.id)?.affinity;
-      if (r.locality) {
-        qlooCity = r.locality.name;
-        if (km(r.locality, c) > 60) {
-          trace.push({ step: "Check", detail: `Qloo read "${c.query}" as ${r.locality.name}, ${Math.round(km(r.locality, c))} km away; this city is left out` });
-          notFoundCities.push(text);
-          continue;
-        }
-        // Qloo can read a city as one part of it (live: "London, Ontario" as Wortley Village, with no score and 2
-        // rooms; "Tokyo, Japan" as Minato, 5 of 6 rooms there): the score and the rooms are asked for around the city.
-        const part = partOfCity(r.locality, c);
-        if (part) {
-          trace.push({ step: "Check", detail: `Qloo read "${c.query}" as only ${part}, a part of it; asked again for 25 km around the city centre` });
-          where = { lat: c.lat, lon: c.lon, radiusM: 25000 };
+      if (r.locality) qlooCity = r.locality.name;
+      // Qloo can read a city as somewhere else (live: "Honolulu, Hawaii" as Honolulu County, 756 km off; "Istanbul,
+      // Republic of Türkiye" as the country), as one part of it ("London, Ontario" as Wortley Village, with no score and
+      // 2 rooms; "Tokyo, Japan" as Minato, 5 of 6 rooms there), or give the act no score there (Moscow, read as its trade
+      // fair; Lagos, Mumbai, Osaka). The city Booker located is then asked for by its centre: 25 km around it, for the
+      // score and the rooms alike. Measured on 14 cities for 2 acts: where both answer, the circle's score is within
+      // 0.02 of the name's, in the same order.
+      const off = r.locality ? km(r.locality, c) : 0;
+      const part = partOfCity(r.locality, c);
+      if (off > 60 || part || affinity === undefined) {
+        const circle = { lat: c.lat, lon: c.lon, radiusM: 25000 };
+        const around = (await q.artists({ entities: [], city: circle, only: [a.id], take: 1 })).list.find((x) => x.id === a.id)?.affinity;
+        const read = r.locality ? ` (read as ${r.locality.name.split(",")[0]})` : "";
+        if (off > 60 || part || around !== undefined) {
+          trace.push({
+            step: "Check",
+            detail: `${off > 60 ? `Qloo read "${c.query}" as ${r.locality!.name.split(",").slice(0, 2).join(",")}, ${Math.round(off)} km away` : part ? `Qloo read "${c.query}" as only ${part}, a part of it` : `Qloo gave ${a.name} no score for "${c.query}"${read}`}; asked again for 25 km around the city centre`,
+          });
+          where = circle;
+          affinity = around;
           qlooCity = undefined;
-          affinity = (await q.artists({ entities: [], city: where, only: [a.id], take: 1 })).list.find((x) => x.id === a.id)?.affinity;
-        }
+          aroundCentre++;
+        } else trace.push({ step: "Check", detail: `Qloo gave ${a.name} no score for "${c.query}"${read}, nor for 25 km around its centre` });
       }
     } catch (e) {
       if (!(e instanceof QlooError && e.code === "locality")) throw e;
@@ -512,7 +520,7 @@ export async function forArtist(
   }
   if (!cities.length) throw new AppError("None of those cities could be placed. Try a city with its state or country, like \"Austin, Texas\".", 400);
   cities.sort((x, y) => (y.affinity ?? -1) - (x.affinity ?? -1));
-  trace.push({ step: "Cities", detail: `Scored ${a.name} in ${n(cities.length, "city", "cities")} with the city as Qloo's signal${notFoundCities.length ? `; not placed: ${notFoundCities.join(", ")}` : ""}` });
+  trace.push({ step: "Cities", detail: `Scored ${a.name} in ${n(cities.length, "city", "cities")} with the city as Qloo's signal${aroundCentre ? ` (${aroundCentre} of them as 25 km around the centre)` : ""}${notFoundCities.length ? `; not placed: ${notFoundCities.join(", ")}` : ""}` });
   trace.push({ step: "Rooms", detail: `Asked Qloo for the live music venues and concert halls in each city whose visitors' taste fits ${a.name}'s fans` });
 
   return {
@@ -522,7 +530,10 @@ export async function forArtist(
     notFound: notFoundCities,
     trace,
     calls: q.calls,
-    ours: ["Cities are ordered by Qloo's affinity for the act there; a city Qloo has no score for comes last."],
+    ours: [
+      "Cities are ordered by Qloo's affinity for the act there; a city Qloo has no score for comes last.",
+      "A city Qloo reads as somewhere else (over 60 km away) or as only a part of it, or where it gives the act no score by the city's name, is scored and searched for 25 km around the city's centre (measured: within 0.02 of the name's score where both answer, in the same order).",
+    ],
     limits: [
       "Qloo measures taste, not capacity, fees or availability: check that a room's size fits before you pitch it.",
       "Rooms are the places Qloo tags as live music venues or concert halls, in Qloo's order; a place mainly used as a museum, gallery, flea market, film studio or housing (its first categories or its name say so), or a closed one (Qloo says so, or its name: \"CLOSED - ...\"), is left out. Each room shows its main categories: some are classical halls or arenas, so check that a room books your kind of show.",

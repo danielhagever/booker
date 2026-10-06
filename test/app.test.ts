@@ -289,3 +289,16 @@ test("the day's cache key keeps letter case: the name matching reads it", async 
   assert.equal(await k(["Wednesday"]), await k(["Wednesday"]));
   assert.notEqual(await cacheKey("venue", { a: 1 }), await cacheKey("artist", { a: 1 }));
 });
+
+test("a tour's cities are saved case-free; the act's name keeps its case", async () => {
+  const m = mockFetch(qloo);
+  try {
+    const kv = memoryKV();
+    const ask = async (artist: string, cities: string) => (await (await worker.fetch(post("/api/artist", { artist, cities }), env(kv.kv))).json()) as any;
+    assert.equal((await ask("Wednesday", "Chicago, Illinois")).cached, undefined);
+    assert.equal((await ask("Wednesday", "chicago, illinois")).cached, true, "the same city typed in lower case");
+    assert.equal((await ask("WEDNESDAY", "Chicago, Illinois")).cached, undefined, "the act's case can change its match");
+  } finally {
+    m.restore();
+  }
+});

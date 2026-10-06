@@ -144,8 +144,8 @@ export class Qloo {
     return list.map(toEntity).filter((e) => e.id && e.name);
   }
 
-  // Artists ranked by Qloo for these signals. `city` is a locality name ("Chicago, Illinois"): measured
-  // to work at city level and to come back empty for neighborhoods. `only` scores a given list.
+  // Artists ranked by Qloo for these signals. `city` is a locality name ("Chicago, Illinois"; measured to work at
+  // city level and to come back empty for neighborhoods) or a circle around a city's centre. `only` scores a given list.
   async artists(o: {
     entities: string[];
     city?: Where;
