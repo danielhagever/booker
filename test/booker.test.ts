@@ -265,7 +265,7 @@ test("a city Qloo reads somewhere else (over 50 km away) is scored and searched 
     const austin = r.cities.find((c) => c.input === "Austin, Texas")!;
     assert.equal(austin.affinity, 0.97);
     assert.equal(austin.qlooCity, undefined, "the far place isn't shown as the city");
-    assert.ok(r.trace.some((t) => /^Qloo read "Austin, Texas" as Austin, Mower County, \d+ km away; asked again for 10 km around the city centre$/.test(t.detail)), JSON.stringify(r.trace));
+    assert.ok(r.trace.some((t) => /^Qloo read "Austin, Texas" as Austin, Mower County, \d+ km away; asked again for 10 km around the city centre \(its rooms are filed in Austin\)$/.test(t.detail)), JSON.stringify(r.trace));
     assert.ok(r.trace.some((t) => t.detail === "Scored Wednesday in 2 cities with the city as Qloo's signal (1 asked as a circle around the centre)"), JSON.stringify(r.trace.map((t) => t.detail)));
     assert.ok(m.calls.some((c) => insights(c, "urn:entity:place") && /^POINT\(-97/.test(c.params.get("filter.location") ?? "")), "the rooms come from around it too");
   } finally {
@@ -298,13 +298,13 @@ test("a city with no score by name is scored around its centre, keeping Qloo's r
   const CHICAGO = [venue(5, "Thalia Hall", "Chicago", "Illinois", undefined, 0.96), venue(6, "Lincoln Hall", "Chicago", "Illinois", undefined, 0.95)];
   const EL_PASO = [venue(19, "Love Buzz", "El Paso", "Texas", undefined, 0.95, { country: "MX" }), venue(20, "The Reagan", "El Paso", "Texas", undefined, 0.94, { country: "MX" })];
   for (const [label, own, d, circleScores, rooms, want] of [
-    ["read as a place named after it", "Trade Fair Austin", "Trade Fair Austin, All-Texas Exhibition Centre, Austin, Texas", true, [MOHAWK], { affinity: 0.92, rooms: ["Mohawk"], trace: 'Qloo gave Wednesday no score for "Austin, Texas" (read as Trade Fair Austin); asked again for 10 km around the city centre' }],
-    ["read as itself", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK], { affinity: 0.92, rooms: ["Room in Austin"], notRooms: ["Mohawk"], trace: 'Qloo gave Wednesday no score for "Austin, Texas" (read as Austin); scored for 10 km around the city centre instead (its rooms are Qloo\'s for the city)' }],
-    ["no score around it either", "Austin", "Austin, Travis County, Texas, United States", false, [MOHAWK], { affinity: undefined, rooms: ["Room in Austin"], trace: 'Qloo gave Wednesday no score for "Austin, Texas" (read as Austin), nor for 10 km around its centre' }],
-    ["the circle is mostly another city's", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK, ...CHICAGO], { affinity: undefined, rooms: ["Room in Austin"], trace: `Qloo gave Wednesday no score for "Austin, Texas" (read as Austin); most rooms 10 km around its centre are Chicago's, so it keeps no score` }],
+    ["read as a place named after it", "Trade Fair Austin", "Trade Fair Austin, All-Texas Exhibition Centre, Austin, Texas", true, [MOHAWK], { affinity: 0.92, rooms: ["Mohawk"], trace: 'Qloo gave Wednesday no score for "Austin, Texas" (read as Trade Fair Austin); asked again for 10 km around the city centre (its rooms are filed in Austin)' }],
+    ["read as itself", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK], { affinity: 0.92, rooms: ["Room in Austin"], notRooms: ["Mohawk"], trace: 'Qloo gave Wednesday no score for "Austin, Texas" (read as Austin); scored for 10 km around the city centre instead (its rooms are filed in Austin) (its rooms are Qloo\'s for the city)' }],
+    ["no score around it either", "Austin", "Austin, Travis County, Texas, United States", false, [MOHAWK], { affinity: undefined, rooms: ["Room in Austin"], trace: 'Qloo gave Wednesday no score for "Austin, Texas" (read as Austin), nor for 10 km around its centre', cities: "Qloo had no score for Wednesday in this city with the city as Qloo's signal" }],
+    // A circle measures the area: a neighbour's rooms don't refuse the score (names can't be trusted to tell, live).
+    ["the circle is mostly another city's", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK, ...CHICAGO], { affinity: 0.92, rooms: ["Room in Austin"], trace: 'Qloo gave Wednesday no score for "Austin, Texas" (read as Austin); scored for 10 km around the city centre instead (its rooms are filed in Chicago and Austin) (its rooms are Qloo\'s for the city)' }],
     ["the circle is mostly across the border", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK, ...EL_PASO], { affinity: undefined, rooms: ["Room in Austin"], trace: `Qloo gave Wednesday no score for "Austin, Texas" (read as Austin); most rooms 10 km around its centre are across the border (El Paso, MX), so it keeps no score` }],
-    ["none of its rooms are recognisably its own: names prove nothing", "Austin", "Austin, Travis County, Texas, United States", true, CHICAGO, { affinity: 0.92, rooms: ["Room in Austin"] }], // Gothenburg's "Göteborgs Stad"
-    ["half its rooms are its own", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK, CHICAGO[0]], { affinity: 0.92, rooms: ["Room in Austin"] }], // Yonkers: 2 of 4, live
+    ["half the circle across the border", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK, EL_PASO[0]], { affinity: 0.92, rooms: ["Room in Austin"] }],
   ] as const) {
     const m = mockFetch((c) => {
       if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location.query"))
@@ -321,8 +321,9 @@ test("a city with no score by name is scored around its centre, keeping Qloo's r
       for (const w of want.rooms) assert.ok(austin.rooms.some((x) => x.name === w), `${label}: ${austin.rooms.map((x) => x.name)}`);
       for (const w of "notRooms" in want ? want.notRooms : []) assert.ok(!austin.rooms.some((x) => x.name === w), `${label}: ${austin.rooms.map((x) => x.name)}`);
       if ("trace" in want) assert.ok(r.trace.some((t) => t.detail === want.trace), `${label}: ${JSON.stringify(r.trace.map((t) => t.detail))}`);
+      if ("cities" in want) assert.equal(r.trace.find((t) => t.step === "Cities")!.detail, want.cities, label);
       // A city with no score isn't counted as scored (live: "Scored ... in 5 cities" with 3 unscored).
-      if (want.affinity === undefined) assert.ok(r.trace.some((t) => t.step === "Cities" && t.detail.includes('no score for "Austin, Texas"')), label);
+      if (want.affinity === undefined) assert.ok(r.trace.some((t) => t.step === "Cities" && t.detail.startsWith("Qloo had no score for Wednesday in this city")), label);
     } finally {
       m.restore();
     }
@@ -333,6 +334,23 @@ test("a city with no score by name is scored around its centre, keeping Qloo's r
     const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Austin, Texas"] });
     assert.equal(r.cities[0].affinity, 0.9);
     assert.ok(!m.calls.some((c) => c.params.get("signal.location")));
+  } finally {
+    m.restore();
+  }
+});
+
+test("St and Saint are one name to the part rule (live: Qloo's \"Saint Petersburg\" for Open-Meteo's \"St Petersburg\")", async () => {
+  const m = mockFetch((c) => {
+    if (c.host === "geocoding-api.open-meteo.com") return { body: { results: [{ id: 9, name: "St. Augustine", admin1: "Florida", country: "United States", country_code: "US", population: 14000, feature_code: "PPLA2", latitude: 29.89, longitude: -81.31 }] } };
+    if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location.query"))
+      return { body: { results: { entities: [artist(10, "Wednesday", 0.955, ["Indie"], 0.9)] }, query: { localities: { signal: { name: "Old Town", disambiguation: "Old Town, Saint Augustine, St. Johns County, Florida, United States", location: { lat: 29.9, lon: -81.31 } } } } } };
+    if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location")) return { body: { results: { entities: [{ ...artist(10, "Wednesday", 0.955, ["Indie"], 0.9), query: { affinity: 0.95 } }] } } };
+    return standardQloo()(c);
+  });
+  try {
+    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["St. Augustine, Florida"] });
+    assert.ok(r.trace.some((t) => t.detail.startsWith('Qloo read "St. Augustine, Florida" as only Old Town, a part of it; asked again for 3 km')), JSON.stringify(r.trace.map((t) => t.detail)));
+    assert.equal(r.cities[0].affinity, 0.95);
   } finally {
     m.restore();
   }
@@ -353,54 +371,36 @@ test("a room across the border is left out of a city's rooms by name too (live: 
   }
 });
 
-test("St and Saint are one name: a part spelled Saint is a part, and rooms filed under Saint are the city's (live: St Petersburg)", async () => {
-  const m = mockFetch((c) => {
-    if (c.host === "geocoding-api.open-meteo.com") return { body: { results: [{ id: 9, name: "St. Augustine", admin1: "Florida", country: "United States", country_code: "US", population: 14000, feature_code: "PPLA2", latitude: 29.89, longitude: -81.31 }] } };
-    if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location.query"))
-      return { body: { results: { entities: [artist(10, "Wednesday", 0.955, ["Indie"], 0.9)] }, query: { localities: { signal: { name: "Old Town", disambiguation: "Old Town, Saint Augustine, St. Johns County, Florida, United States", location: { lat: 29.9, lon: -81.31 } } } } } };
-    if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location")) return { body: { results: { entities: [{ ...artist(10, "Wednesday", 0.955, ["Indie"], 0.9), query: { affinity: 0.95 } }] } } };
-    if (qloo(c) && insights(c, "urn:entity:place") && c.params.get("filter.location"))
-      return { body: { results: { entities: [venue(24, "Jax Room", "Jacksonville", "Florida", undefined, 0.97), venue(25, "Saint Room", "Saint Augustine", "Florida", undefined, 0.95)] } } };
-    return standardQloo()(c);
-  });
-  try {
-    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["St. Augustine, Florida"] });
-    assert.ok(r.trace.some((t) => t.detail.startsWith('Qloo read "St. Augustine, Florida" as only Old Town, a part of it; asked again for 3 km')), JSON.stringify(r.trace.map((t) => t.detail)));
-    assert.deepEqual(r.cities[0].rooms.map((x) => x.name), ["Saint Room", "Jax Room"], "the city's own first");
-    assert.equal(r.cities[0].affinity, 0.95, "1 own of 2: not mostly another city's");
-  } finally {
-    m.restore();
+test("Ste is Sainte to the part rule, and Hong Kong's rooms filed as China are its own (live: San Juan's as the US)", async () => {
+  for (const [geo, locality, rooms, want] of [
+    [{ id: 10, name: "Ste. Agathe", admin1: "Quebec", country: "Canada", country_code: "CA", population: 10000, latitude: 46.05, longitude: -74.28 }, "Old Village, Sainte Agathe, Laurentides, Quebec, Canada", [venue(29, "Agathe Room", "Sainte-Agathe-des-Monts", "Quebec", undefined, 0.95, { country: "CA" })], ["Agathe Room"]],
+    [{ id: 11, name: "Hong Kong", country_code: "HK", population: 7000000, latitude: 22.28, longitude: 114.17 }, "Central, Hong Kong, China", [venue(30, "Kowloon Hall", "Kowloon", "Hong Kong", undefined, 0.95, { country: "CN" }), venue(31, "Shenzhen Club", "Shenzhen", "Guangdong", undefined, 0.94, { country: "CN" })], ["Kowloon Hall", "Shenzhen Club"]],
+  ] as const) {
+    const m = mockFetch((c) => {
+      if (c.host === "geocoding-api.open-meteo.com") return { body: { results: [{ feature_code: "PPLA", ...geo }] } };
+      if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location.query"))
+        return { body: { results: { entities: [artist(10, "Wednesday", 0.955, ["Indie"], 0.9)] }, query: { localities: { signal: { name: locality.split(",")[0], disambiguation: locality, location: { lat: geo.latitude, lon: geo.longitude } } } } } };
+      if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location")) return { body: { results: { entities: [{ ...artist(10, "Wednesday", 0.955, ["Indie"], 0.9), query: { affinity: 0.95 } }] } } };
+      if (qloo(c) && insights(c, "urn:entity:place") && c.params.get("filter.location")) return { body: { results: { entities: rooms } } };
+      return standardQloo()(c);
+    });
+    try {
+      const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: [geo.name] });
+      assert.ok(r.trace.some((t) => t.detail.includes("a part of it; asked again")), `${geo.name}: ${JSON.stringify(r.trace.map((t) => t.detail))}`);
+      assert.deepEqual(r.cities[0].rooms.map((x) => x.name), want, geo.name);
+    } finally {
+      m.restore();
+    }
   }
 });
 
-test("a room filed under the start of the city's name is the city's (live: Frankfurt for Frankfurt am Main, Quebec for Québec City)", async () => {
-  const m = mockFetch((c) => {
-    if (c.host === "geocoding-api.open-meteo.com") return { body: { results: [{ id: 8, name: "Frankfurt am Main", admin1: "Hesse", country: "Germany", country_code: "DE", population: 650000, feature_code: "PPLA2", latitude: 50.11, longitude: 8.68 }] } };
-    if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location.query"))
-      return { body: { results: { entities: [artist(10, "Wednesday", 0.955, ["Indie"], 0.9)] }, query: { localities: { signal: { name: "Sachsenhausen", disambiguation: "Sachsenhausen, Frankfurt am Main, Hesse, Germany", location: { lat: 50.1, lon: 8.68 } } } } } };
-    if (qloo(c) && insights(c, "urn:entity:place") && c.params.get("filter.location"))
-      return { body: { results: { entities: [venue(26, "Offenbach Room", "Offenbach", "Hesse", undefined, 0.97, { country: "DE" }), venue(27, "Frank Room", "Frankfurt", "Hesse", undefined, 0.95, { country: "DE" })] } } };
-    return standardQloo()(c);
-  });
-  try {
-    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Frankfurt, Germany"] });
-    assert.deepEqual(r.cities[0].rooms.map((x) => x.name), ["Frank Room", "Offenbach Room"]);
-  } finally {
-    m.restore();
-  }
-});
-
-test("a misread city's circle drops only rooms in another country, and puts the city's own rooms first (live: Ciudad Juárez, Birkenhead)", async () => {
+test("a misread city's circle keeps Qloo's order and drops only rooms in another country (live: Ciudad Juárez, Birkenhead)", async () => {
   const rooms = [
-    venue(12, "Thalia Hall", "Chicago", "Illinois", undefined, 0.97), // a neighbour: kept, after the city's own
+    venue(12, "Thalia Hall", "Chicago", "Illinois", undefined, 0.97), // a neighbour's room: kept, with its address
     venue(7, "Mohawk", "Austin", "Texas", undefined, 0.95),
-    venue(8, "Pflugerville Hall", "Pflugerville", "Texas", undefined, 0.94, { county: "Travis County" }), // the city's county
-    venue(14, "Travis Hall", "Travis", "Texas", undefined, 0.935), // filed with the county as its city (Birkenhead's "Wirral")
-    venue(15, "Shibuya Room", "Shibuya", "Kanto", undefined, 0.93, { metro: "Austin" }), // the metro (Tokyo's)
-    venue(16, "Kadikoy Room", "Kadikoy", "Austin", undefined, 0.925), // the state (Istanbul's province)
-    venue(21, "Austin City Room", "Austin City", "Texas", undefined, 0.92), // holds the name
     venue(11, "Austin Bar", "Austin", "Victoria", undefined, 0.91, { country: "AU" }), // another country: dropped
     venue(22, "San Juan Room", "Austin", "Texas", undefined, 0.9, { country: "PR" }), // Puerto Rico is the US to Qloo
+    venue(28, "Kowloon Room", "Austin", "Texas", undefined, 0.89, { country: "HK" }), // Hong Kong is China: abroad
   ];
   const h = (c: Call) => {
     if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location.query"))
@@ -412,9 +412,9 @@ test("a misread city's circle drops only rooms in another country, and puts the 
   const m = mockFetch(h);
   try {
     const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Austin, Texas"] });
-    assert.deepEqual(r.cities[0].rooms.map((x) => x.name), ["Mohawk", "Pflugerville Hall", "Travis Hall", "Shibuya Room", "Kadikoy Room", "Austin City Room"]);
-    assert.equal(r.cities[0].affinity, 0.97);
-    assert.ok(r.trace.some((t) => t.detail === 'Qloo read "Austin, Texas" as only South Congress, a part of it; asked again for 10 km around the city centre; left out 1 room across the border (Austin, AU)'), JSON.stringify(r.trace.map((t) => t.detail)));
+    assert.deepEqual(r.cities[0].rooms.map((x) => x.name), ["Thalia Hall", "Mohawk", "San Juan Room"]);
+    assert.equal(r.cities[0].affinity, 0.97, "a neighbour's rooms don't refuse the score");
+    assert.ok(r.trace.some((t) => t.detail === 'Qloo read "Austin, Texas" as only South Congress, a part of it; asked again for 10 km around the city centre (its rooms are filed in Austin and Chicago); left out 2 rooms across the border (Austin, AU and Austin, HK)'), JSON.stringify(r.trace.map((t) => t.detail)));
   } finally {
     m.restore();
   }
@@ -428,6 +428,14 @@ test("a misread city's circle drops only rooms in another country, and puts the 
     assert.ok(r.trace.some((t) => t.detail.endsWith("; left out 2 rooms across the border (El Paso, MX); most rooms there are across the border, so it has no score")), JSON.stringify(r.trace.map((t) => t.detail)));
   } finally {
     j.restore();
+  }
+  // The circle has no score either: said so.
+  const k = mockFetch((c) => (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location") ? { body: { results: { entities: [] } } } : h(c)));
+  try {
+    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Austin, Texas"] });
+    assert.ok(r.trace.some((t) => t.detail.endsWith("; no score there either")), JSON.stringify(r.trace.map((t) => t.detail)));
+  } finally {
+    k.restore();
   }
 });
 
@@ -469,7 +477,7 @@ test("a city Qloo reads as only a part of it is scored and searched in a circle 
   try {
     const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Austin, Texas", "Chicago, Illinois"] });
     const austin = r.cities.find((c) => c.input === "Austin, Texas")!;
-    assert.ok(r.trace.some((t) => t.detail === 'Qloo read "Austin, Texas" as only South Congress, a part of it; asked again for 10 km around the city centre'), JSON.stringify(r.trace));
+    assert.ok(r.trace.some((t) => t.detail === 'Qloo read "Austin, Texas" as only South Congress, a part of it; asked again for 10 km around the city centre (its rooms are filed in Austin)'), JSON.stringify(r.trace));
     assert.equal(austin.affinity, 0.97, "the score is the city's, asked around it");
     assert.deepEqual(austin.rooms.map((x) => x.name), ["Mohawk"]);
     assert.equal(austin.qlooCity, undefined, "the part isn't shown as the city");
