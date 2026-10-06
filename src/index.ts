@@ -27,7 +27,7 @@ const failure = (e: unknown) => {
 };
 
 // Bump whenever the pipeline or the result format changes, so no one gets yesterday's logic.
-const CACHE_VERSION = 105;
+const CACHE_VERSION = 106;
 
 async function sha(s: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -134,7 +134,7 @@ function caveats(r: { acts?: VenueResult["acts"]; venue?: VenueResult["venue"]; 
   const lost = (r.inbox ?? []).filter((p) => !p.id).map((p) => p.input);
   if (lost.length) parts.push(`Pitches not found in Qloo: ${lost.join(", ")}.`);
   for (const c of r.cities ?? []) if (c.note) parts.push(c.note);
-  if (r.notFound?.length) parts.push(`Cities left out (not found, or Qloo placed them somewhere else): ${r.notFound.join(", ")}.`);
+  if (r.notFound?.length) parts.push(`Cities left out (not found, or Qloo couldn't place them): ${r.notFound.join(", ")}.`);
   return parts.join(" ");
 }
 

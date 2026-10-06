@@ -206,7 +206,7 @@ test("MCP: the artist answer names the cities it left out", async () => {
       body: JSON.stringify({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "find_rooms_for_artist", arguments: { artist: "Wednesday", cities: ["Chicago, Illinois", "Zzqx, Nowhere"] } } }),
     });
     const text = JSON.parse((await (await worker.fetch(call, env())).text()).split("\n").find((l) => l.startsWith("data: "))!.slice(6)).result.content[0].text;
-    assert.match(text, /Cities left out \(not found, or Qloo placed them somewhere else\): Zzqx, Nowhere\./);
+    assert.match(text, /Cities left out \(not found, or Qloo couldn't place them\): Zzqx, Nowhere\./);
   } finally {
     m.restore();
   }

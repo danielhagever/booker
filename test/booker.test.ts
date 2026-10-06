@@ -1,7 +1,7 @@
 // Booker's pipelines against a mock Qloo shaped like the live API. Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { forArtist, forVenue, sizeOf, fromSize, cityOf, showRooms, resolveArtists } from "../src/booker.ts";
+import { forArtist, forVenue, sizeOf, fromSize, cityOf, showRooms, resolveArtists, cityRadiusKm } from "../src/booker.ts";
 import { resembles, nameKey, squashed, isRoom, chooseVenue, resolveArtist, resolveVenue } from "../src/resolve.ts";
 import { names, cityList } from "../src/input.ts";
 import { Budget } from "../src/limits.ts";
@@ -248,7 +248,7 @@ test("the same city typed twice is scored once, and the trace says so", async ()
   }
 });
 
-test("a city Qloo reads somewhere else (over 60 km away) is scored and searched around its centre, not left out", async () => {
+test("a city Qloo reads somewhere else (over 50 km away) is scored and searched around its centre, not left out", async () => {
   // Live: "Honolulu, Hawaii" was Honolulu County (756 km off), "Istanbul, Republic of Türkiye" the country, and both
   // were left out; 25 km around their centres scores them (0.990, 0.951).
   const m = mockFetch((c) => {
@@ -264,8 +264,8 @@ test("a city Qloo reads somewhere else (over 60 km away) is scored and searched 
     const austin = r.cities.find((c) => c.input === "Austin, Texas")!;
     assert.equal(austin.affinity, 0.97);
     assert.equal(austin.qlooCity, undefined, "the far place isn't shown as the city");
-    assert.ok(r.trace.some((t) => /^Qloo read "Austin, Texas" as Austin, Mower County, \d+ km away; asked again for 25 km around the city centre$/.test(t.detail)), JSON.stringify(r.trace));
-    assert.ok(r.trace.some((t) => t.detail.startsWith("Scored Wednesday in 2 cities with the city as Qloo's signal (1 of them as 25 km around the centre)")));
+    assert.ok(r.trace.some((t) => /^Qloo read "Austin, Texas" as Austin, Mower County, \d+ km away; asked again for 10 km around the city centre$/.test(t.detail)), JSON.stringify(r.trace));
+    assert.ok(r.trace.some((t) => t.detail.startsWith("Scored Wednesday in 2 cities with the city as Qloo's signal (1 of them as a circle around the centre)")));
     assert.ok(m.calls.some((c) => insights(c, "urn:entity:place") && /^POINT\(-97/.test(c.params.get("filter.location") ?? "")), "the rooms come from around it too");
   } finally {
     m.restore();
@@ -289,13 +289,20 @@ test("a city read as a part of it is searched around its centre even when the ac
   }
 });
 
-test("an act with no score for the city's name is scored around its centre; with none there either, the name's rooms stay", async () => {
-  // Live: Moscow (read as its trade fair), Lagos, Mumbai and Osaka gave no score by name and a score around the centre
-  // (Japanese Breakfast 0.922 in Moscow, with the Tchaikovsky Concert Hall instead of 2 rooms at Ostankino).
-  for (const circleScores of [true, false]) {
+test("no score where Qloo read a place inside the city is asked around its centre; no score for the city itself stays", async () => {
+  // Live: Moscow (read as Trade Fair Moscow) had no score and 2 rooms at Ostankino; around its centre, 0.922 and the
+  // Tchaikovsky Concert Hall. Yonkers, read as itself with no score, was scored by Manhattan's clubs from 25 km around.
+  for (const [own, d, circleScores, asked, scoredByName] of [
+    ["Trade Fair Austin", "Trade Fair Austin, All-Texas Exhibition Centre, Austin, Texas", true, true, false],
+    ["Trade Fair Austin", "Trade Fair Austin, All-Texas Exhibition Centre, Austin, Texas", false, true, false],
+    ["Trade Fair Austin", "Trade Fair Austin, All-Texas Exhibition Centre, Austin, Texas", true, false, true], // scored there: kept
+    ["Austin", "Austin, Travis County, Texas, United States", true, false, false],
+    ["Austin", "Austin, Austin, Travis County, Texas, United States", true, false, false], // the city itself
+    ["Travis County", "Travis County, Texas, United States", true, false, false], // bigger, not inside
+  ] as const) {
     const m = mockFetch((c) => {
       if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location.query"))
-        return { body: { results: { entities: [] }, query: { localities: { signal: { name: "Trade Fair Austin", disambiguation: "Trade Fair Austin, All-Texas Exhibition Centre, Austin, Texas", location: { lat: 30.33, lon: -97.7 } } } } } };
+        return { body: { results: { entities: scoredByName ? [artist(10, "Wednesday", 0.955, ["Indie"], 0.9)] : [] }, query: { localities: { signal: { name: own, disambiguation: d, location: { lat: 30.33, lon: -97.7 } } } } } };
       if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location"))
         return { body: { results: { entities: circleScores ? [{ ...artist(10, "Wednesday", 0.955, ["Indie"], 0.9), query: { affinity: 0.92 } }] : [] } } };
       if (qloo(c) && insights(c, "urn:entity:place") && c.params.get("filter.location"))
@@ -305,15 +312,19 @@ test("an act with no score for the city's name is scored around its centre; with
     try {
       const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Austin, Texas"] });
       const austin = r.cities[0];
-      if (circleScores) {
+      assert.equal(m.calls.some((c) => c.params.get("signal.location")), asked, d);
+      if (!asked) {
+        assert.equal(austin.affinity === undefined, !scoredByName);
+        assert.ok(!r.trace.some((t) => t.step === "Check"), "a city read as itself with no score is left as it is");
+      } else if (circleScores) {
         assert.equal(austin.affinity, 0.92);
         assert.deepEqual(austin.rooms.map((x) => x.name), ["Mohawk"]);
-        assert.ok(r.trace.some((t) => t.detail === 'Qloo gave Wednesday no score for "Austin, Texas" (read as Trade Fair Austin); asked again for 25 km around the city centre'), JSON.stringify(r.trace));
+        assert.ok(r.trace.some((t) => t.detail === 'Qloo gave Wednesday no score for "Austin, Texas" (read as Trade Fair Austin); asked again for 10 km around the city centre'), JSON.stringify(r.trace));
       } else {
         assert.equal(austin.affinity, undefined);
         assert.ok(!austin.rooms.some((x) => x.name === "Mohawk"), "the rooms stay on the city's name");
         assert.ok(austin.qlooCity?.startsWith("Trade Fair Austin"));
-        assert.ok(r.trace.some((t) => t.detail === 'Qloo gave Wednesday no score for "Austin, Texas" (read as Trade Fair Austin), nor for 25 km around its centre'), JSON.stringify(r.trace));
+        assert.ok(r.trace.some((t) => t.detail === 'Qloo gave Wednesday no score for "Austin, Texas" (read as Trade Fair Austin), nor for 10 km around its centre'), JSON.stringify(r.trace));
       }
     } finally {
       m.restore();
@@ -321,7 +332,31 @@ test("an act with no score for the city's name is scored around its centre; with
   }
 });
 
-test("a city Qloo reads as only a part of it is scored and searched for 25 km around its centre", async () => {
+test("a city's circle holds its people at about 3,000 per km², from 3 to 25 km", () => {
+  assert.deepEqual([434, 94589, 960000, 2720546, 9733276, undefined].map(cityRadiusKm), [3, 3, 10, 17, 25, 3]); // Morrison .. Tokyo
+});
+
+test("the circle is the city's size, and a city read 50 km off is asked by it (live: Boise as Boise County, 56 km)", async () => {
+  // Chicago's 2.7 million people make 17 km, Asheville's 95,000 the 3 km floor; 45 km off stays on the name.
+  // The act has no score in the circle either: a city read elsewhere is still searched there, not by the misread name.
+  for (const [city, lat, lon, radius] of [["Chicago, Illinois", 41.85 + 0.5, -87.65, "17000"], ["Asheville, North Carolina", 35.6 + 0.5, -82.55, "3000"], ["Chicago, Illinois", 41.85 + 0.405, -87.65, null]] as const) {
+    const m = mockFetch((c) => {
+      if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location.query"))
+        return { body: { results: { entities: [artist(10, "Wednesday", 0.955, ["Indie"], 0.9)] }, query: { localities: { signal: { name: "Some County", location: { lat, lon } } } } } };
+      if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location")) return { body: { results: { entities: [] } } };
+      return standardQloo()(c);
+    });
+    try {
+      await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: [city] });
+      assert.equal(m.calls.find((c) => c.params.get("signal.location"))?.params.get("signal.location.radius") ?? null, radius, `${city} ${lat}`);
+      assert.equal(m.calls.find((c) => insights(c, "urn:entity:place"))!.params.get("filter.location.radius"), radius, `rooms for ${city} ${lat}`);
+    } finally {
+      m.restore();
+    }
+  }
+});
+
+test("a city Qloo reads as only a part of it is scored and searched in a circle around its centre, sized by its population", async () => {
   // Live: "London, Ontario" was Wortley Village (no score, 2 rooms) and "Tokyo, Japan" Minato (5 of 6 rooms there).
   const m = mockFetch((c) => {
     if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location.query")?.startsWith("Austin"))
@@ -335,7 +370,7 @@ test("a city Qloo reads as only a part of it is scored and searched for 25 km ar
   try {
     const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Austin, Texas", "Chicago, Illinois"] });
     const austin = r.cities.find((c) => c.input === "Austin, Texas")!;
-    assert.ok(r.trace.some((t) => t.detail.includes('Qloo read "Austin, Texas" as only South Congress, a part of it')), JSON.stringify(r.trace));
+    assert.ok(r.trace.some((t) => t.detail === 'Qloo read "Austin, Texas" as only South Congress, a part of it; asked again for 10 km around the city centre'), JSON.stringify(r.trace));
     assert.equal(austin.affinity, 0.97, "the score is the city's, asked around it");
     assert.deepEqual(austin.rooms.map((x) => x.name), ["Mohawk"]);
     assert.equal(austin.qlooCity, undefined, "the part isn't shown as the city");
@@ -344,7 +379,7 @@ test("a city Qloo reads as only a part of it is scored and searched for 25 km ar
     // The score's call has the circle as its signal, the rooms' call as its filter, each with its own radius.
     for (const [c, as] of around.map((c) => [c, insights(c, "urn:entity:artist") ? "signal" : "filter"] as const)) {
       assert.match(c.params.get(`${as}.location`) ?? "", /^POINT\(-97\.\d+ 30\.\d+\)$/);
-      assert.equal(c.params.get(`${as}.location.radius`), "25000");
+      assert.equal(c.params.get(`${as}.location.radius`), "10000", "Austin's 960,000 people at 3,000 per km²");
       assert.ok(![...c.params.keys()].some((k) => k.endsWith(".location.query") || (k.endsWith(".location.radius") && !k.startsWith(as))), [...c.params.keys()].join(","));
     }
     assert.deepEqual(around.map((c) => c.params.get("filter.type")).sort(), ["urn:entity:artist", "urn:entity:place"]);

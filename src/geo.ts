@@ -11,6 +11,7 @@ export interface Place {
   lon: number;
   name: string; // what the page shows, e.g. "Portland, Maine"
   query: string; // what Qloo is asked for: the same city, spelled out
+  population?: number; // Open-Meteo's, which sizes the circle a city is asked for when Qloo misreads its name
   // Set when what came after the comma isn't this city's state or country ("Chicago, Austin"): the city
   // was then taken as the most populous of its name, and the answer says how it was read.
   unmatched?: string;
@@ -129,7 +130,7 @@ function spellings(name: string): string[] {
 }
 
 export async function cityCenter(cache: KVNamespace, budget: Budget, city: string): Promise<Place | null> {
-  const key = `city16:${city.toLowerCase()}`;
+  const key = `city17:${city.toLowerCase()}`; // city17: with the population, 100 places asked for a region that fits none of 10
   const hit = await kvGet(cache, budget, key);
   if (hit) return hit as Place;
   // "Newcastle,UK" and "Newcastle , UK" are "Newcastle, UK".
@@ -208,8 +209,18 @@ export async function cityCenter(cache: KVNamespace, budget: Budget, city: strin
     for (const r of await geocode(budget, hyphen, "en")) if (canon(r.name) === canon(hyphen) && !seen.has(idOf(r))) (seen.add(idOf(r)), list.push(r));
   }
   if (!list.length) return null;
-  const named = parts.length ? list.filter((r) => parts.every((p) => byName(r, p))) : [];
-  const matches = named.length ? named : parts.length ? list.filter((r) => parts.every((p) => byCode(r, p))) : [];
+  const fits = () => {
+    const named = parts.length ? list.filter((r) => parts.every((p) => byName(r, p))) : [];
+    return named.length ? named : parts.length ? list.filter((r) => parts.every((p) => byCode(r, p))) : [];
+  };
+  let matches = fits();
+  // Open-Meteo lists the first 10 places of a name, and a smaller one that fits what came after the comma can be
+  // further down (live: Newport, Rhode Island; Salem, Massachusetts; Jackson, Wyoming). Only then are 100 asked for,
+  // keeping places of exactly the typed name that fit (asking for 100 every time made Porto Porto Alegre).
+  if (parts.length && !matches.length) {
+    const more = (await geocode(budget, name, "en", 100)).filter((r) => canon(r.name) === canon(name) && parts.every((p) => byCode(r, p)) && !seen.has(idOf(r)));
+    if (more.length) (list.push(...more), (matches = fits()));
+  }
   const pool = matches.length ? matches : list;
   // Towns and cities first (Open-Meteo lists Vancouver Island above the city of Vancouver), unless an island
   // or region is far bigger than any town of that name (Long Island, Maui).
@@ -229,16 +240,16 @@ export async function cityCenter(cache: KVNamespace, budget: Budget, city: strin
   const cityName = r.country_code === "CA" && fold(r.name) === "quebec" && fold(r.admin1) === "quebec" ? `${r.name} City` : r.name;
   const label = `${cityName}${region ? ", " + region : ""}`;
   const typedRegion = rest.filter(Boolean).join(", ");
-  const out: Place = { lat: r.latitude, lon: r.longitude, name: label, query: label, ...(typedRegion && !matches.length ? { unmatched: typedRegion } : {}) };
+  const out: Place = { lat: r.latitude, lon: r.longitude, name: label, query: label, ...(r.population ? { population: Number(r.population) } : {}), ...(typedRegion && !matches.length ? { unmatched: typedRegion } : {}) };
   await kvPut(cache, budget, key, out, 60 * 60 * 24 * 30);
   return out;
 }
 
-async function geocode(budget: Budget, name: string, language: string): Promise<any[]> {
+async function geocode(budget: Budget, name: string, language: string, count = 10): Promise<any[]> {
   if (!budget.take()) throw new AppError("This search needs more lookups than one request allows.", 503);
   try {
     const res = await fetchWithTimeout(
-      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=10&language=${language}`,
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=${count}&language=${language}`,
       { headers: UA },
       6000,
     );

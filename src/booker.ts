@@ -470,27 +470,30 @@ export async function forArtist(
       affinity = r.list.find((x) => x.id === a.id)?.affinity;
       if (r.locality) qlooCity = r.locality.name;
       // Qloo can read a city as somewhere else (live: "Honolulu, Hawaii" as Honolulu County, 756 km off; "Istanbul,
-      // Republic of Türkiye" as the country), as one part of it ("London, Ontario" as Wortley Village, with no score and
-      // 2 rooms; "Tokyo, Japan" as Minato, 5 of 6 rooms there), or give the act no score there (Moscow, read as its trade
-      // fair; Lagos, Mumbai, Osaka). The city Booker located is then asked for by its centre: 25 km around it, for the
-      // score and the rooms alike. Measured on 14 cities for 2 acts: where both answer, the circle's score is within
-      // 0.02 of the name's, in the same order.
+      // Republic of Türkiye" as the country; "Boise, Idaho" as Boise County, 56 km), as one part of it ("London, Ontario"
+      // as Wortley Village, with no score and 2 rooms; "Tokyo, Japan" as Minato, 5 of 6 rooms there), or as a place
+      // inside it, with no score for the act (Moscow as its trade fair). The city Booker located is then asked for by a
+      // circle around its centre the size of the city, for the score and the rooms alike (a fixed 25 km scored Yonkers
+      // and Morrison by Manhattan's and Denver's clubs, live). Measured on 26 city-act pairs where both answer, the
+      // circle's score is within 0.025 of the name's, 0.006 lower on average. A city read as itself with no score keeps
+      // that (Lagos, Yonkers): Qloo leaves an act out of a city's list when its taste there is off.
       const off = r.locality ? km(r.locality, c) : 0;
       const part = partOfCity(r.locality, c);
-      if (off > 60 || part || affinity === undefined) {
-        const circle = { lat: c.lat, lon: c.lon, radiusM: 25000 };
+      const inside = affinity === undefined ? namedInside(r.locality, c) : null;
+      if (off > 50 || part || inside) {
+        const radiusKm = cityRadiusKm(c.population);
+        const circle = { lat: c.lat, lon: c.lon, radiusM: radiusKm * 1000 };
         const around = (await q.artists({ entities: [], city: circle, only: [a.id], take: 1 })).list.find((x) => x.id === a.id)?.affinity;
-        const read = r.locality ? ` (read as ${r.locality.name.split(",")[0]})` : "";
-        if (off > 60 || part || around !== undefined) {
+        if (off > 50 || part || around !== undefined) {
           trace.push({
             step: "Check",
-            detail: `${off > 60 ? `Qloo read "${c.query}" as ${r.locality!.name.split(",").slice(0, 2).join(",")}, ${Math.round(off)} km away` : part ? `Qloo read "${c.query}" as only ${part}, a part of it` : `Qloo gave ${a.name} no score for "${c.query}"${read}`}; asked again for 25 km around the city centre`,
+            detail: `${off > 50 ? `Qloo read "${c.query}" as ${r.locality!.name.split(",").slice(0, 2).join(",")}, ${Math.round(off)} km away` : part ? `Qloo read "${c.query}" as only ${part}, a part of it` : `Qloo gave ${a.name} no score for "${c.query}" (read as ${inside})`}; asked again for ${radiusKm} km around the city centre`,
           });
           where = circle;
           affinity = around;
           qlooCity = undefined;
           aroundCentre++;
-        } else trace.push({ step: "Check", detail: `Qloo gave ${a.name} no score for "${c.query}"${read}, nor for 25 km around its centre` });
+        } else trace.push({ step: "Check", detail: `Qloo gave ${a.name} no score for "${c.query}" (read as ${inside}), nor for ${radiusKm} km around its centre` });
       }
     } catch (e) {
       if (!(e instanceof QlooError && e.code === "locality")) throw e;
@@ -520,7 +523,7 @@ export async function forArtist(
   }
   if (!cities.length) throw new AppError("None of those cities could be placed. Try a city with its state or country, like \"Austin, Texas\".", 400);
   cities.sort((x, y) => (y.affinity ?? -1) - (x.affinity ?? -1));
-  trace.push({ step: "Cities", detail: `Scored ${a.name} in ${n(cities.length, "city", "cities")} with the city as Qloo's signal${aroundCentre ? ` (${aroundCentre} of them as 25 km around the centre)` : ""}${notFoundCities.length ? `; not placed: ${notFoundCities.join(", ")}` : ""}` });
+  trace.push({ step: "Cities", detail: `Scored ${a.name} in ${n(cities.length, "city", "cities")} with the city as Qloo's signal${aroundCentre ? ` (${aroundCentre} of them as a circle around the centre)` : ""}${notFoundCities.length ? `; not placed: ${notFoundCities.join(", ")}` : ""}` });
   trace.push({ step: "Rooms", detail: `Asked Qloo for the live music venues and concert halls in each city whose visitors' taste fits ${a.name}'s fans` });
 
   return {
@@ -532,7 +535,7 @@ export async function forArtist(
     calls: q.calls,
     ours: [
       "Cities are ordered by Qloo's affinity for the act there; a city Qloo has no score for comes last.",
-      "A city Qloo reads as somewhere else (over 60 km away) or as only a part of it, or where it gives the act no score by the city's name, is scored and searched for 25 km around the city's centre (measured: within 0.02 of the name's score where both answer, in the same order).",
+      "A city Qloo reads as somewhere else (over 50 km away), as only a part of it, or as a place inside it with no score for the act, is scored and searched in a circle around the city's centre sized by its population (3 to 25 km; measured on 26 city-act pairs: within 0.025 of the name's score where both answer, 0.006 lower on average).",
     ],
     limits: [
       "Qloo measures taste, not capacity, fees or availability: check that a room's size fits before you pitch it.",
@@ -542,6 +545,18 @@ export async function forArtist(
     degraded: false,
     computedAt: Date.now(),
   };
+}
+
+// How far a circle around a city's centre reaches to cover the city: a disc holding its people at about 3,000 per
+// km², from 3 to 25 km (Yonkers 5 km, Honolulu 6, Kyoto 12, Moscow 25). Unknown population: 3 km.
+export const cityRadiusKm = (population?: number) => Math.min(25, Math.max(3, Math.round(Math.sqrt((population ?? 0) / 3000 / Math.PI))));
+
+// A locality not named as the city whose description names the city after its own name: a place inside it (Trade Fair
+// Moscow), or the city or more under another name (São Paulo's region). Asked after partOfCity. Its name, else null.
+function namedInside(locality: { name: string } | undefined, center: { name: string }): string | null {
+  const [own, ...within] = (locality?.name ?? "").split(",").map((x) => nameKey(x));
+  const city = nameKey(center.name.split(",")[0]);
+  return own !== city && within.includes(city) ? locality!.name.split(",")[0].trim() : null;
 }
 
 // Qloo can answer a city asked by name with a part of it: "Tokyo, Japan" is Minato ("Minato, Tokyo, ...", one ward)
