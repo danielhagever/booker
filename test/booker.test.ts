@@ -1066,3 +1066,13 @@ test("a place Qloo says is closed, or whose name says so, is marked closed (Qloo
     m.restore();
   }
 });
+
+test("when the key's calls for the month are used up, the answer says so instead of \"try again in a minute\" (live 2026-10-06)", async () => {
+  const m = mockFetch((c) => (c.host === "qloo.test" ? { status: 429, body: { error_msg: "Rate limit exceeded" }, headers: { "x-month-ratelimit-remaining": "0", "x-month-ratelimit-limit": "10000" } } : undefined));
+  try {
+    await assert.rejects(forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Chicago, Illinois"] }), (e: any) => e.status === 503 && /used all of its Qloo API calls for the month/.test(e.message));
+    assert.equal(m.calls.filter((c) => c.host === "qloo.test").length, 1, "not retried: waiting won't help");
+  } finally {
+    m.restore();
+  }
+});
