@@ -136,7 +136,7 @@ function spellings(name: string): string[] {
 }
 
 export async function cityCenter(cache: KVNamespace, budget: Budget, city: string): Promise<Place | null> {
-  const key = `city18:${city.toLowerCase()}`; // city18: with the population, country and county
+  const key = `city19:${city.toLowerCase()}`; // city19: with the population, country and county; regions by whole words, territories
   const hit = await kvGet(cache, budget, key);
   if (hit) return hit as Place;
   // "Newcastle,UK" and "Newcastle , UK" are "Newcastle, UK".
