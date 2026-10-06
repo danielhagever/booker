@@ -273,7 +273,8 @@ test("Qloo calls are paced: no more than one every 340 ms by default", async () 
   }) as typeof fetch;
   try {
     const { QLOO_MIN_GAP_MS, ...live } = ENV(memoryKV().kv);
-    await forArtist(live as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Chicago, Illinois"] });
+    const r = await forArtist(live as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Chicago, Illinois"] });
+    assert.ok(r.trace.some((t: any) => / in 1 city with the city as Qloo's signal/.test(t.detail)), "one city, said so (live: \"in 1 cities\")");
     const gaps = starts.slice(1).map((t, i) => t - starts[i]);
     assert.ok(starts.length >= 3 && Math.min(...gaps) >= 330, `gaps ${gaps}`);
   } finally {

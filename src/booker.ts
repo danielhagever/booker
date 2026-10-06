@@ -502,7 +502,7 @@ export async function forArtist(
   }
   if (!cities.length) throw new AppError("None of those cities could be placed. Try a city with its state or country, like \"Austin, Texas\".", 400);
   cities.sort((x, y) => (y.affinity ?? -1) - (x.affinity ?? -1));
-  trace.push({ step: "Cities", detail: `Scored ${a.name} in ${cities.length} cities with the city as Qloo's signal${notFoundCities.length ? `; not placed: ${notFoundCities.join(", ")}` : ""}` });
+  trace.push({ step: "Cities", detail: `Scored ${a.name} in ${cities.length} ${cities.length === 1 ? "city" : "cities"} with the city as Qloo's signal${notFoundCities.length ? `; not placed: ${notFoundCities.join(", ")}` : ""}` });
   trace.push({ step: "Rooms", detail: `Asked Qloo for the live music venues and concert halls in each city whose visitors' taste fits ${a.name}'s fans` });
 
   return {
