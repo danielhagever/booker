@@ -263,6 +263,84 @@ test("a city Qloo reads somewhere else (over 60 km away) is left out, not scored
   }
 });
 
+test("a city Qloo reads as only a part of it is scored and searched for 25 km around its centre", async () => {
+  // Live: "London, Ontario" was Wortley Village (no score, 2 rooms) and "Tokyo, Japan" Minato (5 of 6 rooms there).
+  const m = mockFetch((c) => {
+    if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location.query")?.startsWith("Austin"))
+      return { body: { results: { entities: [] }, query: { localities: { signal: { name: "South Congress", disambiguation: "South Congress, Austin, Travis County, Texas, United States", location: { lat: 30.25, lon: -97.75 } } } } } };
+    if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location"))
+      return { body: { results: { entities: [{ ...artist(10, "Wednesday", 0.955, ["Indie"], 0.9), query: { affinity: 0.97 } }] } } };
+    if (qloo(c) && insights(c, "urn:entity:place") && c.params.get("filter.location"))
+      return { body: { results: { entities: [venue(7, "Mohawk", "Austin", "Texas", undefined, 0.95)] } } };
+    return standardQloo()(c);
+  });
+  try {
+    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Austin, Texas", "Chicago, Illinois"] });
+    const austin = r.cities.find((c) => c.input === "Austin, Texas")!;
+    assert.ok(r.trace.some((t) => t.detail.includes('Qloo read "Austin, Texas" as only South Congress, a part of it')), JSON.stringify(r.trace));
+    assert.equal(austin.affinity, 0.97, "the score is the city's, asked around it");
+    assert.deepEqual(austin.rooms.map((x) => x.name), ["Mohawk"]);
+    assert.equal(austin.qlooCity, undefined, "the part isn't shown as the city");
+    const around = m.calls.filter((c) => c.params.get("filter.location") ?? c.params.get("signal.location"));
+    assert.equal(around.length, 2);
+    // The score's call has the circle as its signal, the rooms' call as its filter, each with its own radius.
+    for (const [c, as] of around.map((c) => [c, insights(c, "urn:entity:artist") ? "signal" : "filter"] as const)) {
+      assert.match(c.params.get(`${as}.location`) ?? "", /^POINT\(-97\.\d+ 30\.\d+\)$/);
+      assert.equal(c.params.get(`${as}.location.radius`), "25000");
+      assert.ok(![...c.params.keys()].some((k) => k.endsWith(".location.query") || (k.endsWith(".location.radius") && !k.startsWith(as))), [...c.params.keys()].join(","));
+    }
+    assert.deepEqual(around.map((c) => c.params.get("filter.type")).sort(), ["urn:entity:artist", "urn:entity:place"]);
+    // A city read as itself ("Chicago") isn't asked again.
+    assert.ok(!r.trace.some((t) => /Chicago.*a part of it/.test(t.detail)));
+    assert.ok(r.cities.find((c) => c.input === "Chicago, Illinois")!.rooms.some((x) => x.name === "Thalia Hall"));
+  } finally {
+    m.restore();
+  }
+});
+
+test("counts of one are singular in the trace (live: \"Scored 1 pitches\")", async () => {
+  const { r } = await run({ pitches: [{ name: "Dehd" }] });
+  assert.ok(r.trace.some((t) => /^Scored 1 pitch against your acts/.test(t.detail)), JSON.stringify(r.trace));
+  assert.ok(r.trace.some((t) => /^Qloo ranked \d+ acts? that fit/.test(t.detail)));
+  const { r: two } = await run({ pitches: [{ name: "Dehd" }, { name: "Alex G" }] });
+  assert.ok(two.trace.some((t) => /^Scored 2 pitches against/.test(t.detail)));
+});
+
+test("only a part of the city is asked again: the city itself or a bigger region isn't", async () => {
+  // Live: "Paris" came back as "Paris, Paris, Paris, Paris Police Prefecture, ..." (the city itself).
+  for (const [name, d, again] of [["Wortley Village", "Wortley Village, Austin, Travis County, Texas, United States", 1], ["Austin", "Austin, Austin, Travis County, Texas, United States", 0], ["Travis County", "Travis County, Texas, United States", 0]] as const) {
+    const m = mockFetch((c) => {
+      if (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location.query")?.startsWith("Austin"))
+        return { body: { results: { entities: [] }, query: { localities: { signal: { name, disambiguation: d, location: { lat: 30.25, lon: -97.75 } } } } } };
+      return standardQloo()(c);
+    });
+    try {
+      await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Austin, Texas"] });
+      assert.equal(m.calls.filter((c) => insights(c, "urn:entity:artist") && c.params.get("signal.location")).length, again, d);
+    } finally {
+      m.restore();
+    }
+  }
+});
+
+test("Qloo's locality is named with its disambiguation, its own name first", async () => {
+  const answers: Record<string, object> = {
+    Montreal: { name: "Island of Montreal", disambiguation: "Canada" }, // live: the disambiguation alone read as "Canada"
+    Tokyo: { name: "Minato", disambiguation: "Minato, Tokyo, Tōkaidō, Japan" },
+    Chicago: { name: "Chicago" },
+  };
+  const m = mockFetch((c) => (qloo(c) ? { body: { results: { entities: [] }, query: { localities: { signal: { ...answers[c.params.get("signal.location.query")!], location: { lat: 1, lon: 2 } } } } } } : undefined));
+  try {
+    const q = new Qloo(ENV(memoryKV().kv) as any, new Budget(48));
+    const named = async (city: string) => (await q.artists({ entities: [], city, take: 1 })).locality?.name;
+    assert.equal(await named("Montreal"), "Island of Montreal, Canada");
+    assert.equal(await named("Tokyo"), "Minato, Tokyo, Tōkaidō, Japan");
+    assert.equal(await named("Chicago"), "Chicago");
+  } finally {
+    m.restore();
+  }
+});
+
 test("Qloo calls are paced: no more than one every 340 ms by default", async () => {
   const m = mockFetch(standardQloo());
   const starts: number[] = [];

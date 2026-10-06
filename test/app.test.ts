@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import worker, { venueSummary, tourSummary } from "../src/index.ts";
+import worker, { cacheKey, venueSummary, tourSummary } from "../src/index.ts";
 import { ENV, artist, memoryKV, mockFetch, venue, type Call } from "./mock.ts";
 
 const page = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
@@ -281,4 +281,11 @@ test("MCP: a body over 256 KB is refused before it is read in full; a normal cal
   const list = await mcp(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }));
   assert.equal(list.status, 200);
   assert.match(await list.text(), /"tools"/);
+});
+
+test("the day's cache key keeps letter case: the name matching reads it", async () => {
+  const k = (acts: string[]) => cacheKey("venue", { venue: { name: "Empty Bottle, Chicago" }, acts: acts.map((name) => ({ name })) });
+  assert.notEqual(await k(["AMY (AMY WINEHOUSE)"]), await k(["amy (amy winehouse)"]));
+  assert.equal(await k(["Wednesday"]), await k(["Wednesday"]));
+  assert.notEqual(await cacheKey("venue", { a: 1 }), await cacheKey("artist", { a: 1 }));
 });

@@ -148,7 +148,7 @@ export class Qloo {
   // to work at city level and to come back empty for neighborhoods. `only` scores a given list.
   async artists(o: {
     entities: string[];
-    city?: string;
+    city?: Where;
     popMin?: number;
     popMax?: number;
     exclude?: string[];
@@ -158,7 +158,7 @@ export class Qloo {
   }): Promise<{ list: Entity[]; locality?: { name: string; lat: number; lon: number } }> {
     const params: Record<string, string> = { "filter.type": "urn:entity:artist", take: String(Math.min(50, o.take)) };
     if (o.entities.length) params["signal.interests.entities"] = o.entities.join(",");
-    if (o.city) params["signal.location.query"] = o.city;
+    if (o.city) Object.assign(params, whereParams("signal", o.city));
     if (o.popMin !== undefined) params["filter.popularity.min"] = o.popMin.toFixed(4);
     if (o.popMax !== undefined) params["filter.popularity.max"] = o.popMax.toFixed(4);
     if (o.exclude?.length) params["filter.exclude.entities"] = o.exclude.join(",");
@@ -169,12 +169,12 @@ export class Qloo {
   }
 
   // Live music venues and concert halls in a city, ranked by Qloo for these signals.
-  async venues(entities: string[], city: string, take: number): Promise<Entity[]> {
+  async venues(entities: string[], city: Where, take: number): Promise<Entity[]> {
     const body = await this.get("/v2/insights", {
       "filter.type": "urn:entity:place",
       "filter.tags": VENUE_TAGS.join(","),
       "operator.filter.tags": "union",
-      "filter.location.query": city,
+      ...whereParams("filter", city),
       "signal.interests.entities": entities.join(","),
       take: String(Math.min(50, take)),
     });
@@ -182,10 +182,24 @@ export class Qloo {
   }
 }
 
+// A city by name, or a circle around its centre (measured: Qloo reads "London, Ontario" as Wortley Village and
+// "Tokyo, Japan" as Minato; 25 km around their centres finds rooms across each city).
+export type Where = string | { lat: number; lon: number; radiusM: number };
+
+function whereParams(as: "signal" | "filter", w: Where): Record<string, string> {
+  return typeof w === "string"
+    ? { [`${as}.location.query`]: w }
+    : { [`${as}.location`]: `POINT(${w.lon} ${w.lat})`, [`${as}.location.radius`]: String(Math.round(w.radiusM)) };
+}
+
 function localityOf(body: any): { name: string; lat: number; lon: number } | undefined {
   const l = body?.query?.localities?.signal ?? body?.query?.localities?.filter?.[0];
   const lat = num(l?.location?.lat), lon = num(l?.location?.lon);
-  return l && Number.isFinite(lat) && Number.isFinite(lon) ? { name: String(l.name ?? ""), lat, lon } : undefined;
+  // The disambiguation usually starts with the locality's own name ("Wortley Village, London, Southwestern Ontario,
+  // ..."), but not always (Montreal's is "Island of Montreal" with the disambiguation "Canada", live).
+  const own = String(l?.name ?? "").trim(), d = String(l?.disambiguation ?? "").trim();
+  const name = !d ? own : !own || d.toLowerCase().startsWith(own.toLowerCase()) ? d : `${own}, ${d}`;
+  return l && Number.isFinite(lat) && Number.isFinite(lon) ? { name, lat, lon } : undefined;
 }
 
 function num(v: unknown): number {

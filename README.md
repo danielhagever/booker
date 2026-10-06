@@ -27,6 +27,8 @@ The other side has the same problem in reverse: an artist or agent routing a tou
 1. Each city is scored by Qloo's affinity for the act there (the city as the signal).
 2. In each city, Qloo ranks the live music venues and concert halls whose visitors' taste fits the act's fans. The rooms go on a map.
 
+When Qloo reads a city as only a part of it ("London, Ontario" as Wortley Village, with no score and 2 rooms; "Tokyo, Japan" as the ward of Minato, 5 of 6 rooms there), Booker asks again for 25 km around the city's centre, for the score and the rooms alike (London then has a score and 6 rooms, The Aeolian Hall first; Tokyo's rooms run from Shibuya to Nihonbashi).
+
 Every result has a **How we know** panel: each Qloo call with its parameters, status, result count and time; then Booker's own rules, labeled apart from Qloo's numbers; then the limits of the answer.
 
 It works as a web app and as two **MCP tools** for agents (`find_acts_for_venue`, `find_rooms_for_artist`).
@@ -47,6 +49,7 @@ Streaming dashboards say how big an act is. Qloo says whose fans overlap with wh
 | Your room's visitors | `signal.interests.entities=<the venue>` | What people who like the venue itself like |
 | Rooms that fit an act | `GET /v2/insights?filter.type=urn:entity:place&filter.tags=urn:tag:category:place:live_music_venue,urn:tag:category:place:concert_hall&operator.filter.tags=union&filter.location.query=<city>&signal.interests.entities=<act>` | Venues whose visitors' taste fits the act |
 | A city's taste for an act | `GET /v2/insights?filter.type=urn:entity:artist&signal.location.query=<city>&filter.results.entities=<act>` | Rank the cities on a route |
+| A city read as a part of it | the same two with `signal.location=POINT(lon lat)&signal.location.radius=25000` and `filter.location=POINT(lon lat)&filter.location.radius=25000` | The score and the rooms across the whole city |
 
 A venue search makes about 20 Qloo calls in about 9 seconds; an artist search with four cities about 9 calls. Calls are paced one every 340 ms with one bounded retry after a 429 (Qloo rejects the sixth call within about a second, measured), every external call is counted against Cloudflare's free-plan limit of 50 per request (one tool call per MCP request), results are cached for a day, and each address gets 20 new searches an hour on each of the venue search, the artist search and the MCP tools (answers from the day's cache don't count).
 

@@ -27,7 +27,7 @@ const failure = (e: unknown) => {
 };
 
 // Bump whenever the pipeline or the result format changes, so no one gets yesterday's logic.
-const CACHE_VERSION = 103;
+const CACHE_VERSION = 104;
 
 async function sha(s: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -36,6 +36,10 @@ async function sha(s: string): Promise<string> {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
+
+// The key keeps letter case: the name matching reads case ("AMY (AMY WINEHOUSE)", "LAW & ORDER SVU"), and in
+// Newcomer 13 of 523 recorded names changed answer by case, so one spelling can't be answered with another's result.
+export const cacheKey = async (kind: string, input: unknown) => `${kind}${CACHE_VERSION}:` + (await sha(JSON.stringify(input)));
 
 // Identical requests are answered from a day's cache (the page says so: the timings in "How we know"
 // are from the run that made it). A result where an optional step failed isn't kept. Only a new search
@@ -48,7 +52,7 @@ async function cached<T extends { degraded: boolean }>(
   run: () => Promise<T>,
   gate: () => Promise<boolean>,
 ): Promise<T & { cached?: boolean }> {
-  const key = `${kind}${CACHE_VERSION}:` + (await sha(JSON.stringify(input).toLowerCase()));
+  const key = await cacheKey(kind, input);
   if (budget.take()) {
     try {
       const hit = await env.CACHE.get(key, "json");

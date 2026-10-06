@@ -4,7 +4,7 @@
 // page's "How we know" panel; Booker's own rules are listed apart from Qloo's numbers.
 
 import { AppError, type Budget } from "./limits.ts";
-import { Qloo, QlooError, type Entity, type QlooEnv } from "./qloo.ts";
+import { Qloo, QlooError, type Entity, type QlooEnv, type Where } from "./qloo.ts";
 import { nameKey, resolveArtist, resolveChosen, resolveVenue, type Choice, type Resolved } from "./resolve.ts";
 import { cityCenter, km } from "./geo.ts";
 import { MAX_ACTS, MAX_PITCHES } from "./input.ts";
@@ -284,7 +284,7 @@ export async function forVenue(
   const openers = openersMax === undefined ? [] : (await ask({ entities: actIds, popMax: openersMax, exclude: actIds, rising: input.rising, take: 8 })).map(candidate).filter((o) => !fits.some((f) => f.id === o.id));
   trace.push({
     step: "Shortlist",
-    detail: `Qloo ranked ${fits.length} acts that fit${city && openersWithoutCity ? ` in ${qlooCity ?? city}` : ""} and ${openers.length} openers for fans of your acts${city && !openersWithoutCity ? ` in ${qlooCity ?? city}` : ""}${input.rising ? ", favoring rising acts (Qloo trends)" : ""}`,
+    detail: `Qloo ranked ${n(fits.length, "act", "acts")} that fit${city && openersWithoutCity ? ` in ${qlooCity ?? city}` : ""} and ${n(openers.length, "opener", "openers")} for fans of your acts${city && !openersWithoutCity ? ` in ${qlooCity ?? city}` : ""}${input.rising ? ", favoring rising acts (Qloo trends)" : ""}`,
   });
 
   // 4. Why: for each candidate, the act of yours whose fans like it most (one call per act, up to 4).
@@ -370,7 +370,7 @@ export async function forVenue(
     for (const m of p.missing) inbox.push({ input: m, name: m, id: "", match: "closest", alternatives: [], verdict: "unscored", why: "Not found in Qloo" });
     trace.push({
       step: "Inbox",
-      detail: `Scored ${p.found.length} pitches against your acts, ${floor === undefined ? "with none of Qloo's picks to compare with (taste not judged)" : `next to ${refAff.length} of Qloo's picks as a yardstick (taste floor ${fmt(floor)})`}${p.missing.length ? `; not found: ${p.missing.join(", ")}` : ""}${twice(p.same)}${readAsTwo(p.split)}`,
+      detail: `Scored ${n(p.found.length, "pitch", "pitches")} against your acts, ${floor === undefined ? "with none of Qloo's picks to compare with (taste not judged)" : `next to ${refAff.length} of Qloo's picks as a yardstick (taste floor ${fmt(floor)})`}${p.missing.length ? `; not found: ${p.missing.join(", ")}` : ""}${twice(p.same)}${readAsTwo(p.split)}`,
     });
   }
 
@@ -462,9 +462,10 @@ export async function forArtist(
     }
     let affinity: number | undefined;
     let qlooCity: string | undefined;
+    let where: Where = c.query;
     try {
       // How much this city's taste likes the act: the act alone, scored with the city as the signal.
-      const r = await q.artists({ entities: [], city: c.query, only: [a.id], take: 1 });
+      const r = await q.artists({ entities: [], city: where, only: [a.id], take: 1 });
       affinity = r.list.find((x) => x.id === a.id)?.affinity;
       if (r.locality) {
         qlooCity = r.locality.name;
@@ -473,13 +474,22 @@ export async function forArtist(
           notFoundCities.push(text);
           continue;
         }
+        // Qloo can read a city as one part of it (live: "London, Ontario" as Wortley Village, with no score and 2
+        // rooms; "Tokyo, Japan" as Minato, 5 of 6 rooms there): the score and the rooms are asked for around the city.
+        const part = partOfCity(r.locality, c);
+        if (part) {
+          trace.push({ step: "Check", detail: `Qloo read "${c.query}" as only ${part}, a part of it; asked again for 25 km around the city centre` });
+          where = { lat: c.lat, lon: c.lon, radiusM: 25000 };
+          qlooCity = undefined;
+          affinity = (await q.artists({ entities: [], city: where, only: [a.id], take: 1 })).list.find((x) => x.id === a.id)?.affinity;
+        }
       }
     } catch (e) {
       if (!(e instanceof QlooError && e.code === "locality")) throw e;
       notFoundCities.push(text);
       continue;
     }
-    const rooms = showRooms(await q.venues([a.id], c.query, 12), 6);
+    const rooms = showRooms(await q.venues([a.id], where, 12), 6);
     const note = c.unmatched ? `"${text}" was read as ${c.name}; "${c.unmatched}" didn't match its state or country, so check this is the city you meant.` : undefined;
     if (note) trace.push({ step: "Check", detail: note });
     cities.push({
@@ -502,7 +512,7 @@ export async function forArtist(
   }
   if (!cities.length) throw new AppError("None of those cities could be placed. Try a city with its state or country, like \"Austin, Texas\".", 400);
   cities.sort((x, y) => (y.affinity ?? -1) - (x.affinity ?? -1));
-  trace.push({ step: "Cities", detail: `Scored ${a.name} in ${cities.length} ${cities.length === 1 ? "city" : "cities"} with the city as Qloo's signal${notFoundCities.length ? `; not placed: ${notFoundCities.join(", ")}` : ""}` });
+  trace.push({ step: "Cities", detail: `Scored ${a.name} in ${n(cities.length, "city", "cities")} with the city as Qloo's signal${notFoundCities.length ? `; not placed: ${notFoundCities.join(", ")}` : ""}` });
   trace.push({ step: "Rooms", detail: `Asked Qloo for the live music venues and concert halls in each city whose visitors' taste fits ${a.name}'s fans` });
 
   return {
@@ -522,3 +532,15 @@ export async function forArtist(
     computedAt: Date.now(),
   };
 }
+
+// Qloo can answer a city asked by name with a part of it: "Tokyo, Japan" is Minato ("Minato, Tokyo, ...", one ward)
+// and "London, Ontario" Wortley Village ("Wortley Village, London, ...", live). A locality named after the city is the
+// city or bigger. The part's name, else null (the same rule as Newcomer's).
+function partOfCity(locality: { name: string } | undefined, center: { name: string }): string | null {
+  const [own, ...within] = (locality?.name ?? "").split(",").map((x) => nameKey(x));
+  const city = nameKey(center.name.split(",")[0]);
+  return !own.includes(city) && within.includes(city) ? locality!.name.split(",")[0].trim() : null;
+}
+
+// "1 pitch", "2 pitches" (live: "Scored 1 pitches").
+const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
