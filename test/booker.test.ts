@@ -449,6 +449,28 @@ test("a misread city's circle keeps Qloo's order and drops only rooms in another
   } finally {
     j.restore();
   }
+  // With other cities scored by name: a circle's held-back score isn't counted as a score by a circle, and the counts
+  // name each way (pass 47).
+  const byName = (rooms: ReturnType<typeof venue>[]) => (c: Call) => {
+    const q = c.params.get("signal.location.query");
+    if (qloo(c) && insights(c, "urn:entity:artist") && q && !q.startsWith("Austin"))
+      return { body: { results: { entities: [{ ...artist(10, "Wednesday", 0.955, ["Indie"], 0.9), query: { affinity: 0.96 } }] }, query: { localities: { signal: { name: q.split(",")[0], disambiguation: q, location: q.startsWith("Chicago") ? { lat: 41.85, lon: -87.65 } : { lat: 35.6, lon: -82.55 } } } } } };
+    return qloo(c) && insights(c, "urn:entity:place") && c.params.get("filter.location") ? { body: { results: { entities: rooms } } } : h(c);
+  };
+  const held = mockFetch(byName(abroad));
+  try {
+    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Austin, Texas", "Chicago, Illinois"] });
+    assert.equal(r.trace.find((t) => t.step === "Cities")!.detail, 'Scored Wednesday in 1 city with the city as Qloo\'s signal; no score for "Austin, Texas"');
+  } finally {
+    held.restore();
+  }
+  const three = mockFetch(byName([venue(7, "Mohawk", "Austin", "Texas", undefined, 0.95)]));
+  try {
+    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Austin, Texas", "Chicago, Illinois", "Asheville, North Carolina"] });
+    assert.equal(r.trace.find((t) => t.step === "Cities")!.detail, "Scored Wednesday in 3 cities (2 by the city's name, 1 by a circle around its centre)");
+  } finally {
+    three.restore();
+  }
   // The circle has no score either: said so.
   const k = mockFetch((c) => (qloo(c) && insights(c, "urn:entity:artist") && c.params.get("signal.location") ? { body: { results: { entities: [] } } } : h(c)));
   try {
