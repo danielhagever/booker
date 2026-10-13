@@ -76,7 +76,7 @@ export interface TourResult extends Trace {
     qlooCity?: string;
     note?: string; // how a city was read when what followed its comma didn't match it
     affinity?: number; // how much the city's taste likes the act (Qloo)
-    rooms: { name: string; id: string; address?: string; lat?: number; lon?: number; affinity?: number; categories?: string[] }[];
+    rooms: { name: string; id: string; address?: string; city?: string; lat?: number; lon?: number; affinity?: number; categories?: string[] }[]; // city: where Qloo files the room
   }[];
   notFound: string[];
 }
@@ -505,7 +505,9 @@ export async function forArtist(
           qlooCity = undefined;
           aroundCentre++;
         } else if (around !== undefined && !mostlyAbroad) {
-          trace.push({ step: "Check", detail: `${why}; scored for ${radiusKm} km around the city centre instead${filed} (its rooms are Qloo's for the city)` });
+          // The rooms shown stay Qloo's for the city's name; the circle's rooms only say whose area the score is.
+          const area = home.length ? `, an area whose rooms Qloo files in ${filedIn(home)}` : "";
+          trace.push({ step: "Check", detail: `${why}; scored for ${radiusKm} km around the city centre instead${area}; the rooms shown are Qloo's for the city` });
           affinity = around;
           aroundCentre++;
         } else
@@ -536,6 +538,7 @@ export async function forArtist(
         name: r.name,
         id: r.id,
         ...(r.address ? { address: r.address } : {}),
+        ...(r.city ? { city: r.city } : {}),
         ...(r.lat !== undefined && r.lon !== undefined ? { lat: r.lat, lon: r.lon } : {}),
         ...(r.affinity !== undefined ? { affinity: r.affinity } : {}),
         ...(r.categories?.length ? { categories: r.categories } : {}),
@@ -548,7 +551,8 @@ export async function forArtist(
   const unscored = cities.filter((x) => x.affinity === undefined).map((x) => x.input);
   trace.push({
     step: "Cities",
-    detail: `${unscored.length === cities.length ? `Qloo had no score for ${a.name} in ${cities.length === 1 ? "this city" : "these cities"}` : `Scored ${a.name} in ${n(cities.length - unscored.length, "city", "cities")}`} with the city as Qloo's signal${aroundCentre ? ` (${aroundCentre} asked as a circle around the centre)` : ""}${unscored.length && unscored.length < cities.length ? `; no score for ${unscored.map((x) => `"${x}"`).join(", ")}` : ""}${notFoundCities.length ? `; not placed: ${notFoundCities.join(", ")}` : ""}`,
+    // "No score" rather than "Qloo had no score": a circle's score is held back when most of its rooms are abroad.
+    detail: `${unscored.length === cities.length ? `No score for ${a.name} in ${cities.length === 1 ? "this city" : "these cities"}${aroundCentre ? ` (${cities.length === 1 ? "also" : `${aroundCentre} also`} asked as a circle around the centre)` : ""}` : `Scored ${a.name} in ${n(cities.length - unscored.length, "city", "cities")} with the city as Qloo's signal${aroundCentre ? ` (${aroundCentre} asked as a circle around the centre)` : ""}`}${unscored.length && unscored.length < cities.length ? `; no score for ${unscored.map((x) => `"${x}"`).join(", ")}` : ""}${notFoundCities.length ? `; not placed: ${notFoundCities.join(", ")}` : ""}`,
   });
   trace.push({ step: "Rooms", detail: `Asked Qloo for the live music venues and concert halls in each city whose visitors' taste fits ${a.name}'s fans` });
 
@@ -580,7 +584,7 @@ export const cityRadiusKm = (population?: number) => Math.min(25, Math.max(3, Ma
 
 // A city name for comparing two: accents, case and "St" for "Saint" don't count (Open-Meteo's "St Petersburg" is Qloo's
 // "Saint Petersburg").
-const placeKey = (s?: string) => nameKey((s ?? "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "")).replace(/\bst\b/g, "saint").replace(/\bste\b/g, "sainte");
+export const placeKey = (s?: string) => nameKey((s ?? "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "")).replace(/\bst\b/g, "saint").replace(/\bste\b/g, "sainte");
 
 // A locality named after the city that isn't the city: its own name holds the city's ("Trade Fair Moscow", "Osaka
 // Prefecture"). Its name, else null.

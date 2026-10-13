@@ -22,8 +22,6 @@ export interface Entity {
   address?: string;
   city?: string;
   region?: string; // state or province
-  metro?: string; // Qloo's metro area ("Tokyo" for a room filed in Shibuya)
-  county?: string; // Qloo's admin2 ("Westchester County", "Liverpool City Region")
   country?: string;
   countryCode?: string;
   categories?: string[]; // a place's categories (Live music venue, Bar...)
@@ -239,8 +237,6 @@ function toEntity(e: any): Entity {
     address: typeof e.properties?.address === "string" ? e.properties.address : undefined,
     city: typeof geo.city === "string" ? geo.city : undefined,
     region: typeof geo.admin1_region === "string" ? geo.admin1_region : undefined,
-    metro: typeof geo.metro === "string" ? geo.metro : undefined,
-    county: typeof geo.admin2_region === "string" ? geo.admin2_region : undefined,
     country: typeof geo.country === "string" ? geo.country : undefined,
     countryCode: typeof geo.country_code === "string" ? geo.country_code : undefined,
     // All of them: the music category can come late (The O2: Outlet mall, Arena, Restaurant, Bowling alley,
