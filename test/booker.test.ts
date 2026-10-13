@@ -1,7 +1,8 @@
 // Booker's pipelines against a mock Qloo shaped like the live API. Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { forArtist, forVenue, sizeOf, fromSize, cityOf, showRooms, resolveArtists, cityRadiusKm } from "../src/booker.ts";
+import { forArtist, forVenue, sizeOf, fromSize, cityOf, showRooms, resolveArtists } from "../src/booker.ts";
+import { cityRadiusKm } from "../src/city.ts";
 import { resembles, nameKey, squashed, isRoom, chooseVenue, resolveArtist, resolveVenue } from "../src/resolve.ts";
 import { names, cityList } from "../src/input.ts";
 import { Budget } from "../src/limits.ts";
