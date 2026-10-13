@@ -27,7 +27,7 @@ const failure = (e: unknown) => {
 };
 
 // Bump whenever the pipeline or the result format changes, so no one gets yesterday's logic.
-const CACHE_VERSION = 115;
+const CACHE_VERSION = 116;
 
 async function sha(s: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -114,8 +114,8 @@ export function tourSummary(r: TourResult): string {
   const digits = new Set(shown.map((x) => x.affinity!.toFixed(3))).size < shown.length ? 4 : 3;
   const order = shown.map((x) => `${city(x)} (${x.affinity!.toFixed(digits)})`);
   const head = order.length
-    ? `${r.artist.name}'s crowd is strongest in ${order[0]}${order.length > 1 ? `, then ${list(order.slice(1))}` : ""}.${unscored.length ? ` Qloo has no city score for ${list(unscored)}.` : ""}`
-    : `Qloo has no city score for ${r.artist.name} in ${list(unscored)}.`;
+    ? `${r.artist.name}'s crowd is strongest in ${order[0]}${order.length > 1 ? `, then ${list(order.slice(1))}` : ""}.${unscored.length ? ` No city score for ${list(unscored)}.` : ""}`
+    : `No city score for ${r.artist.name} in ${list(unscored)}.`; // "No", not "Qloo has no": a circle's score can be held back
   // A room is named with the tour city it fits, not placed in it: a city's best room can be a neighbour's (Birkenhead's
   // is Liverpool's Cavern Club, live), and names can't tell which (Qloo files Gothenburg's rooms as Göteborgs Stad).
   // "The American Cathedral in Paris" isn't followed by "for Paris".

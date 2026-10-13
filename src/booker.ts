@@ -6,7 +6,7 @@
 import { AppError, type Budget } from "./limits.ts";
 import { Qloo, QlooError, type Entity, type QlooEnv, type Where } from "./qloo.ts";
 import { nameKey, resolveArtist, resolveChosen, resolveVenue, type Choice, type Resolved } from "./resolve.ts";
-import { cityCenter, cityRadiusKm, km, nation, readNote } from "./city.ts";
+import { cityCenter, cityRadiusKm, countryName, km, nation, readNote } from "./city.ts";
 import { MAX_ACTS, MAX_PITCHES } from "./input.ts";
 
 export interface Named {
@@ -525,7 +525,7 @@ export async function forArtist(
     // began with Detroit's Saint Andrew's Hall).
     const listed = found ?? (await q.venues([a.id], where, 12));
     const across = listed.filter((v) => !sameNation(v, c));
-    if (across.length && !found) trace.push({ step: "Check", detail: `Left out ${across.length} of Qloo's rooms for "${c.query}" across the border (${[...new Set(across.map((v) => `${v.city ?? v.country ?? ""}, ${v.countryCode}`))].slice(0, 2).join(" and ")})` });
+    if (across.length && !found) trace.push({ step: "Check", detail: `Left out ${across.length} of Qloo's rooms for "${c.query}" across the border (${filedIn(across, true)})` });
     const rooms = showRooms(listed.filter((v) => sameNation(v, c)), 6);
     const note = readNote(text, c);
     if (note) trace.push({ step: "Check", detail: note });
@@ -601,7 +601,7 @@ const sameNation = (v: Entity, c: { country?: string }) => !c.country || !v.coun
 function filedIn(vs: Entity[], abroad = false): string {
   const count = new Map<string, number>();
   for (const v of vs) {
-    const where = (v.city || v.region || v.country || "") + (abroad && v.countryCode ? `, ${v.countryCode}` : "");
+    const where = (v.city || v.region || v.country || "") + (abroad && v.countryCode ? `, ${countryName(v.countryCode)}` : "");
     if (where) count.set(where, (count.get(where) ?? 0) + 1);
   }
   return [...count].sort((x, y) => y[1] - x[1]).slice(0, 2).map(([w]) => w).join(" and ");

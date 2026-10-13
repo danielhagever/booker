@@ -97,9 +97,9 @@ test("MCP: both tools are listed with their guidance, and a call answers in word
 test("summaries rank only the cities Qloo scored", () => {
   const room = [{ name: "The Lexington" }];
   const lon = { label: "London, United Kingdom", rooms: room };
-  assert.equal(tourSummary({ artist: { name: "Wednesday" }, cities: [lon] } as any), "Qloo has no city score for Wednesday in London. Best-fit rooms: The Lexington for London.");
+  assert.equal(tourSummary({ artist: { name: "Wednesday" }, cities: [lon] } as any), "No city score for Wednesday in London. Best-fit rooms: The Lexington for London.");
   const both: any = { artist: { name: "Wednesday" }, cities: [{ label: "Asheville, North Carolina", affinity: 0.996, rooms: [] }, lon] };
-  assert.equal(tourSummary(both), "Wednesday's crowd is strongest in Asheville (0.996). Qloo has no city score for London. Best-fit rooms: The Lexington for London.");
+  assert.equal(tourSummary(both), "Wednesday's crowd is strongest in Asheville (0.996). No city score for London. Best-fit rooms: The Lexington for London.");
   // A room is named with the city it fits, never placed by name (live: Birkenhead's best room is Liverpool's Cavern Club,
   // and Qloo files Gothenburg's rooms as "Göteborgs Stad").
   const near: any = { artist: { name: "Wednesday" }, cities: [{ label: "Birkenhead, England", affinity: 0.99, rooms: [{ name: "The Cavern Club", city: "Liverpool" }] }, { label: "St Petersburg, Russia", affinity: 0.98, rooms: [{ name: "Aurora", city: "Saint Petersburg" }] }] };

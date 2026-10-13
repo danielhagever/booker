@@ -318,7 +318,7 @@ test("a city with no score by name is scored around its centre, keeping Qloo's r
     ["no score around it either", "Austin", "Austin, Travis County, Texas, United States", false, [MOHAWK], { affinity: undefined, rooms: ["Room in Austin"], trace: 'Qloo gave Wednesday no score for "Austin, Texas" (read as Austin), nor for 10 km around its centre', cities: "No score for Wednesday in this city" }],
     // A circle measures the area: a neighbour's rooms don't refuse the score (names can't be trusted to tell, live).
     ["the circle is mostly another city's", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK, ...CHICAGO], { affinity: 0.92, rooms: ["Room in Austin"], trace: 'Qloo gave Wednesday no score for "Austin, Texas" (read as Austin); scored for 10 km around the city centre instead, an area whose rooms Qloo files in Chicago and Austin; the rooms shown are Qloo\'s for the city' }],
-    ["the circle is mostly across the border", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK, ...EL_PASO], { affinity: undefined, rooms: ["Room in Austin"], trace: `Qloo gave Wednesday no score for "Austin, Texas" (read as Austin); most rooms 10 km around its centre are across the border (El Paso, MX), so it keeps no score` }],
+    ["the circle is mostly across the border", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK, ...EL_PASO], { affinity: undefined, rooms: ["Room in Austin"], trace: `Qloo gave Wednesday no score for "Austin, Texas" (read as Austin); most rooms 10 km around its centre are across the border (El Paso, Mexico), so it keeps no score` }],
     ["half the circle across the border", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK, EL_PASO[0]], { affinity: 0.92, rooms: ["Room in Austin"] }],
   ] as const) {
     const m = mockFetch((c) => {
@@ -383,7 +383,7 @@ test("a room across the border is left out of a city's rooms by name too (live: 
     const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Austin, Texas"] });
     // A room Qloo gives no country is kept: not knowing isn't being abroad (only a known country acts).
     assert.deepEqual(r.cities[0].rooms.map((x) => x.name), ["Mohawk", "Unfiled Hall"]);
-    assert.ok(r.trace.some((t) => t.detail === 'Left out 1 of Qloo\'s rooms for "Austin, Texas" across the border (Detroit, CA)'), JSON.stringify(r.trace.map((t) => t.detail)));
+    assert.ok(r.trace.some((t) => t.detail === 'Left out 1 of Qloo\'s rooms for "Austin, Texas" across the border (Detroit, Canada)'), JSON.stringify(r.trace.map((t) => t.detail)));
   } finally {
     m.restore();
   }
@@ -432,7 +432,7 @@ test("a misread city's circle keeps Qloo's order and drops only rooms in another
     const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Austin, Texas"] });
     assert.deepEqual(r.cities[0].rooms.map((x) => x.name), ["Thalia Hall", "Mohawk", "San Juan Room"]);
     assert.equal(r.cities[0].affinity, 0.97, "a neighbour's rooms don't refuse the score");
-    assert.ok(r.trace.some((t) => t.detail === 'Qloo read "Austin, Texas" as only South Congress, a part of it; asked again for 10 km around the city centre (its rooms are filed in Austin and Chicago); left out 2 rooms across the border (Austin, AU and Austin, HK)'), JSON.stringify(r.trace.map((t) => t.detail)));
+    assert.ok(r.trace.some((t) => t.detail === 'Qloo read "Austin, Texas" as only South Congress, a part of it; asked again for 10 km around the city centre (its rooms are filed in Austin and Chicago); left out 2 rooms across the border (Austin, Australia and Austin, Hong Kong SAR China)'), JSON.stringify(r.trace.map((t) => t.detail)));
   } finally {
     m.restore();
   }
@@ -443,7 +443,7 @@ test("a misread city's circle keeps Qloo's order and drops only rooms in another
     const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Austin, Texas"] });
     assert.equal(r.cities[0].affinity, undefined);
     assert.deepEqual(r.cities[0].rooms.map((x) => x.name), ["Mohawk"]);
-    assert.ok(r.trace.some((t) => t.detail.endsWith("; left out 2 rooms across the border (El Paso, MX); most rooms there are across the border, so it has no score")), JSON.stringify(r.trace.map((t) => t.detail)));
+    assert.ok(r.trace.some((t) => t.detail.endsWith("; left out 2 rooms across the border (El Paso, Mexico); most rooms there are across the border, so it has no score")), JSON.stringify(r.trace.map((t) => t.detail)));
     // Not "Qloo had no score": the circle had one, held back (pass 45).
     assert.equal(r.trace.find((t) => t.step === "Cities")!.detail, "No score for Wednesday in this city (also asked as a circle around the centre)");
   } finally {
