@@ -449,6 +449,14 @@ test("a misread city's circle keeps Qloo's order and drops only rooms in another
   } finally {
     j.restore();
   }
+  // A circle holding one room, abroad, says so (pass 52: "most rooms" for Kreuzlingen's one).
+  const one = mockFetch((c) => (qloo(c) && insights(c, "urn:entity:place") && c.params.get("filter.location") ? { body: { results: { entities: [abroad[1]] } } } : h(c)));
+  try {
+    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Austin, Texas"] });
+    assert.ok(r.trace.some((t) => t.detail.endsWith("; the only room there is across the border, so it has no score")), JSON.stringify(r.trace.map((t) => t.detail)));
+  } finally {
+    one.restore();
+  }
   // With other cities scored by name: a circle's held-back score isn't counted as a score by a circle, and the counts
   // name each way (pass 47).
   const byName = (rooms: ReturnType<typeof venue>[]) => (c: Call) => {

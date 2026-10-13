@@ -499,7 +499,7 @@ export async function forArtist(
         const border = abroad.length ? `; left out ${abroad.length} ${abroad.length === 1 ? "room" : "rooms"} across the border (${filedIn(abroad, true)})` : "";
         const filed = home.length ? ` (its rooms are filed in ${filedIn(home)})` : "";
         if (misread) {
-          trace.push({ step: "Check", detail: `${why}; asked again for ${radiusKm} km around the city centre${filed}${border}${mostlyAbroad ? "; most rooms there are across the border, so it has no score" : around === undefined ? "; no score there either" : ""}` });
+          trace.push({ step: "Check", detail: `${why}; asked again for ${radiusKm} km around the city centre${filed}${border}${mostlyAbroad ? `; ${there.length === 1 ? "the only room there is" : "most rooms there are"} across the border, so it has no score` : around === undefined ? "; no score there either" : ""}` });
           where = circle;
           found = there; // rooms abroad are left out below, with every city's
           affinity = mostlyAbroad ? undefined : around;
