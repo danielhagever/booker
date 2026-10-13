@@ -6,7 +6,7 @@
 import { AppError, type Budget } from "./limits.ts";
 import { Qloo, QlooError, type Entity, type QlooEnv, type Where } from "./qloo.ts";
 import { nameKey, resolveArtist, resolveChosen, resolveVenue, type Choice, type Resolved } from "./resolve.ts";
-import { cityCenter, cityRadiusKm, km, nation } from "./city.ts";
+import { cityCenter, cityRadiusKm, km, nation, readNote } from "./city.ts";
 import { MAX_ACTS, MAX_PITCHES } from "./input.ts";
 
 export interface Named {
@@ -527,8 +527,7 @@ export async function forArtist(
     const across = listed.filter((v) => !sameNation(v, c));
     if (across.length && !found) trace.push({ step: "Check", detail: `Left out ${across.length} of Qloo's rooms for "${c.query}" across the border (${[...new Set(across.map((v) => `${v.city ?? v.country ?? ""}, ${v.countryCode}`))].slice(0, 2).join(" and ")})` });
     const rooms = showRooms(listed.filter((v) => sameNation(v, c)), 6);
-    // A region that fit only without its direction says so ("Northern Norway" as Norway), not that it didn't match.
-    const note = c.unmatched ? `"${text}" was read as ${c.name}; ${c.regionAs ? `"${c.unmatched}" fit only as "${c.regionAs}"` : `"${c.unmatched}" didn't match its state or country`}, so check this is the city you meant.` : undefined;
+    const note = readNote(text, c);
     if (note) trace.push({ step: "Check", detail: note });
     cities.push({
       input: text,
