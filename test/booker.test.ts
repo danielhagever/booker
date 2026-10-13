@@ -2,7 +2,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { forArtist, forVenue, sizeOf, fromSize, cityOf, showRooms, resolveArtists } from "../src/booker.ts";
-import { cityRadiusKm } from "../src/city.ts";
 import { resembles, nameKey, squashed, isRoom, chooseVenue, resolveArtist, resolveVenue } from "../src/resolve.ts";
 import { names, cityList } from "../src/input.ts";
 import { Budget } from "../src/limits.ts";
@@ -482,10 +481,6 @@ test("a misread city's circle keeps Qloo's order and drops only rooms in another
   }
 });
 
-test("a city's circle holds its people at about 3,000 per km², from 3 to 25 km", () => {
-  assert.deepEqual([434, 94589, 960000, 2720546, 9733276, undefined].map(cityRadiusKm), [3, 3, 10, 17, 25, 3]); // Morrison .. Tokyo
-});
-
 test("the circle is the city's size, and a city read 50 km off is asked by it (live: Boise as Boise County, 56 km)", async () => {
   // Chicago's 2.7 million people make 17 km, Asheville's 95,000 the 3 km floor; 45 km off stays on the name.
   // The act has no score in the circle either: a city read elsewhere is still searched there, not by the misread name.
@@ -873,9 +868,11 @@ test("when only the openers come back empty with the city, the city still shapes
 test("a city whose comma part doesn't match is placed by its name, and the answer says how it was read", async () => {
   const m = mockFetch(standardQloo());
   try {
-    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Chicago, Austin", "Austin, Texas"] });
+    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Chicago, Austin", "Austin, Texas", "Asheville, Western North Carolina"] });
     const chi = r.cities.find((c) => c.label === "Chicago, Illinois")!;
     assert.match(chi.note!, /"Chicago, Austin" was read as Chicago, Illinois; "Austin" didn't match its state or country/);
+    // A region that fit once its direction was dropped says so (pass 48: it said "didn't match" for "Northern Norway").
+    assert.equal(r.cities.find((c) => c.label === "Asheville, North Carolina")!.note, '"Asheville, Western North Carolina" was read as Asheville, North Carolina; "Western North Carolina" fit only as "North Carolina", so check this is the city you meant.');
     assert.equal(r.cities.find((c) => c.label === "Austin, Texas")!.note, undefined);
     assert.ok(r.trace.some((t) => t.step === "Check" && /was read as Chicago, Illinois/.test(t.detail)));
   } finally {

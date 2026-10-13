@@ -527,7 +527,8 @@ export async function forArtist(
     const across = listed.filter((v) => !sameNation(v, c));
     if (across.length && !found) trace.push({ step: "Check", detail: `Left out ${across.length} of Qloo's rooms for "${c.query}" across the border (${[...new Set(across.map((v) => `${v.city ?? v.country ?? ""}, ${v.countryCode}`))].slice(0, 2).join(" and ")})` });
     const rooms = showRooms(listed.filter((v) => sameNation(v, c)), 6);
-    const note = c.unmatched ? `"${text}" was read as ${c.name}; "${c.unmatched}" didn't match its state or country, so check this is the city you meant.` : undefined;
+    // A region that fit only without its direction says so ("Northern Norway" as Norway), not that it didn't match.
+    const note = c.unmatched ? `"${text}" was read as ${c.name}; ${c.regionAs ? `"${c.unmatched}" fit only as "${c.regionAs}"` : `"${c.unmatched}" didn't match its state or country`}, so check this is the city you meant.` : undefined;
     if (note) trace.push({ step: "Check", detail: note });
     cities.push({
       input: text,
