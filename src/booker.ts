@@ -6,7 +6,7 @@
 import { AppError, type Budget } from "./limits.ts";
 import { Qloo, QlooError, type Entity, type QlooEnv, type Where } from "./qloo.ts";
 import { nameKey, resolveArtist, resolveChosen, resolveVenue, type Choice, type Resolved } from "./resolve.ts";
-import { cityCenter, km, nation } from "./geo.ts";
+import { cityCenter, km, nation } from "./city.ts";
 import { MAX_ACTS, MAX_PITCHES } from "./input.ts";
 
 export interface Named {
@@ -594,7 +594,7 @@ function namedAfter(locality: { name: string } | undefined, center: { name: stri
   return own !== city && own.includes(city) ? locality!.name.split(",")[0].trim() : null;
 }
 
-// Whether a room is in the city's country, a territory counted as its country's (geo.ts: Qloo files San Juan's rooms as
+// Whether a room is in the city's country, a territory counted as its country's (city.ts: Qloo files San Juan's rooms as
 // the US, Hong Kong's as China).
 const sameNation = (v: Entity, c: { country?: string }) => !c.country || !v.countryCode || nation(v.countryCode) === nation(c.country);
 

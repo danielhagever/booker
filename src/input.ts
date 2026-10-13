@@ -61,7 +61,7 @@ export function names(v: unknown, max: number): { list: Named[]; leftOut: string
 
 // Cities: one per line or separated by semicolons; a comma belongs to the city ("Austin, Texas"). A line
 // isn't split on commas: "Chicago, Austin" can't be told from "Austin, Texas" here, so the geocoder reads it
-// and the answer says how (see geo.ts), rather than a guess losing a city.
+// and the answer says how (see city.ts), rather than a guess losing a city.
 export function cityList(v: unknown): { list: string[]; leftOut: string[] } {
   const raw: unknown[] = typeof v === "string" ? v.split(/[;\n|]+/) : Array.isArray(v) ? v : [];
   const all = [...new Set(raw.map((c) => clean(c)).filter((c) => c.length >= 2))];

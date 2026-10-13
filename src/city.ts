@@ -1,18 +1,16 @@
-// Where a city is (Open-Meteo geocoding), so Qloo is asked about the right one ("Portland, Maine", not
-// Portland, Oregon). Caching is best effort: the free plan allows 1,000 KV writes a day, and a failed
-// write must never fail a search.
+// Where a city is (Open-Meteo geocoding), so Qloo is asked about the right one ("Portland, Maine", not Portland,
+// Oregon), and how far apart two points are. Byte-identical in Newcomer and Booker: change one, copy it to the other.
+// Caching is best effort: the free plan allows 1,000 KV writes a day, and a failed write must never fail a search.
 
-import { AppError, Budget, fetchWithTimeout } from "./limits.ts";
-
-const UA = { "user-agent": "Booker/0.1 (Qloo hackathon demo; github.com/danielhagever/booker)" };
+import { AppError, Budget, UA, fetchWithTimeout } from "./limits.ts";
 
 export interface Place {
   lat: number;
   lon: number;
   name: string; // what the page shows, e.g. "Portland, Maine"
   query: string; // what Qloo is asked for: the same city, spelled out
-  population?: number; // Open-Meteo's, which sizes the circle a city is asked for when Qloo misreads its name
   country?: string; // ISO code, e.g. "US"
+  population?: number; // Open-Meteo's, which sizes a circle around the city (Newcomer's widened place search, Booker's misread city)
   // Set when what came after the comma isn't this city's state or country ("Chicago, Austin"): the city
   // was then taken as the most populous of its name, and the answer says how it was read.
   unmatched?: string;
@@ -68,7 +66,7 @@ const newNamesake = (v: string, n: string) => v.endsWith(` ${n}`) && v.startsWit
 const COUNTY_PREFIX = new Set(["north", "south", "east", "west", "greater", "central", "county"]);
 const countyFits = (v: string, n: string) => v === n || (v.endsWith(` ${n}`) && v.slice(0, -n.length - 1).split(" ").every((w) => COUNTY_PREFIX.has(w)));
 
-async function kvGet(cache: KVNamespace, budget: Budget, key: string): Promise<any> {
+export async function kvGet(cache: KVNamespace, budget: Budget, key: string): Promise<any> {
   if (!budget.take()) return null;
   try {
     return await cache.get(key, "json");
@@ -77,7 +75,7 @@ async function kvGet(cache: KVNamespace, budget: Budget, key: string): Promise<a
   }
 }
 
-async function kvPut(cache: KVNamespace, budget: Budget, key: string, value: unknown, ttl: number): Promise<void> {
+export async function kvPut(cache: KVNamespace, budget: Budget, key: string, value: unknown, ttl: number): Promise<void> {
   if (!budget.take()) return;
   try {
     await cache.put(key, JSON.stringify(value), { expirationTtl: ttl });

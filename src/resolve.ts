@@ -3,7 +3,7 @@
 // the exact name is used only if it resembles what was typed; the answer says so and offers the others.
 
 import { Qloo, type Entity } from "./qloo.ts";
-import { km } from "./geo.ts";
+import { km } from "./city.ts";
 import { SMALL, after, forSearch, nameKey, rankNames, resembles, together, typoDistance, withoutNote, words, wordsResemble } from "./names.ts";
 // The shared name rules live in names.ts; the files that took them from here still can.
 export { abbreviates, abbreviations, after, credits, forSearch, nameKey, rankNames, resembles, squashed, together, withoutNote } from "./names.ts";

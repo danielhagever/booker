@@ -847,7 +847,7 @@ test("a city whose comma part doesn't match is placed by its name, and the answe
 });
 
 test("city lookup: towns over islands, province and state codes worldwide, and every part after the name", async () => {
-  const { cityCenter } = await import("../src/geo.ts");
+  const { cityCenter } = await import("../src/city.ts");
   const R = (name: string, admin1: string, country: string, country_code: string, population: number, feature_code = "PPL") => ({ name, admin1, country, country_code, population, feature_code, latitude: 1, longitude: 1 });
   const GEO: Record<string, unknown[]> = {
     vancouver: [R("Vancouver Island", "British Columbia", "Canada", "CA", 748937, "ISL"), R("Vancouver", "British Columbia", "Canada", "CA", 662248), R("Vancouver", "Washington", "United States", "US", 190915)],
