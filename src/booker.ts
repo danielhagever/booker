@@ -76,7 +76,7 @@ export interface TourResult extends Trace {
     qlooCity?: string;
     note?: string; // how a city was read when what followed its comma didn't match it
     affinity?: number; // how much the city's taste likes the act (Qloo)
-    rooms: { name: string; id: string; address?: string; city?: string; lat?: number; lon?: number; affinity?: number; categories?: string[] }[]; // city: where Qloo files the room
+    rooms: { name: string; id: string; address?: string; lat?: number; lon?: number; affinity?: number; categories?: string[] }[];
   }[];
   notFound: string[];
 }
@@ -449,6 +449,7 @@ export async function forArtist(
   const notFoundCities: string[] = [];
   const cities: TourResult["cities"] = [];
   let aroundCentre = 0; // cities asked for by their centre
+  let byCircle = 0; // cities whose score came from that circle
   for (const text of input.cities) {
     const c = await cityCenter(env.CACHE, budget, text);
     if (!c) {
@@ -502,6 +503,7 @@ export async function forArtist(
           where = circle;
           found = there; // rooms abroad are left out below, with every city's
           affinity = mostlyAbroad ? undefined : around;
+          if (affinity !== undefined) byCircle++;
           qlooCity = undefined;
           aroundCentre++;
         } else if (around !== undefined && !mostlyAbroad) {
@@ -509,6 +511,7 @@ export async function forArtist(
           const area = home.length ? `, an area whose rooms Qloo files in ${filedIn(home)}` : "";
           trace.push({ step: "Check", detail: `${why}; scored for ${radiusKm} km around the city centre instead${area}; the rooms shown are Qloo's for the city` });
           affinity = around;
+          byCircle++;
           aroundCentre++;
         } else
           trace.push({ step: "Check", detail: around === undefined ? `${why}, nor for ${radiusKm} km around its centre` : `${why}; most rooms ${radiusKm} km around its centre are across the border (${filedIn(abroad, true)}), so it keeps no score` });
@@ -538,7 +541,6 @@ export async function forArtist(
         name: r.name,
         id: r.id,
         ...(r.address ? { address: r.address } : {}),
-        ...(r.city ? { city: r.city } : {}),
         ...(r.lat !== undefined && r.lon !== undefined ? { lat: r.lat, lon: r.lon } : {}),
         ...(r.affinity !== undefined ? { affinity: r.affinity } : {}),
         ...(r.categories?.length ? { categories: r.categories } : {}),
@@ -549,10 +551,11 @@ export async function forArtist(
   cities.sort((x, y) => (y.affinity ?? -1) - (x.affinity ?? -1));
   // Cities Qloo gave no score are named, not counted as scored (live: "Scored ... in 5 cities" with 3 unscored).
   const unscored = cities.filter((x) => x.affinity === undefined).map((x) => x.input);
+  const scored = cities.length - unscored.length; // by the city's name, or byCircle of them by a circle around the centre
   trace.push({
     step: "Cities",
     // "No score" rather than "Qloo had no score": a circle's score is held back when most of its rooms are abroad.
-    detail: `${unscored.length === cities.length ? `No score for ${a.name} in ${cities.length === 1 ? "this city" : "these cities"}${aroundCentre ? ` (${cities.length === 1 ? "also" : `${aroundCentre} also`} asked as a circle around the centre)` : ""}` : `Scored ${a.name} in ${n(cities.length - unscored.length, "city", "cities")} with the city as Qloo's signal${aroundCentre ? ` (${aroundCentre} asked as a circle around the centre)` : ""}`}${unscored.length && unscored.length < cities.length ? `; no score for ${unscored.map((x) => `"${x}"`).join(", ")}` : ""}${notFoundCities.length ? `; not placed: ${notFoundCities.join(", ")}` : ""}`,
+    detail: `${unscored.length === cities.length ? `No score for ${a.name} in ${cities.length === 1 ? "this city" : "these cities"}${aroundCentre ? ` (${cities.length === 1 ? "also" : `${aroundCentre} also`} asked as a circle around the centre)` : ""}` : `Scored ${a.name} in ${n(scored, "city", "cities")}${byCircle === 0 ? " with the city as Qloo's signal" : byCircle === scored ? (scored === 1 ? " by a circle around its centre" : ", each by a circle around its centre") : ` (${scored - byCircle} by the city's name, ${byCircle} by a circle around its centre)`}`}${unscored.length && unscored.length < cities.length ? `; no score for ${unscored.map((x) => `"${x}"`).join(", ")}` : ""}${notFoundCities.length ? `; not placed: ${notFoundCities.join(", ")}` : ""}`,
   });
   trace.push({ step: "Rooms", detail: `Asked Qloo for the live music venues and concert halls in each city whose visitors' taste fits ${a.name}'s fans` });
 
@@ -584,7 +587,7 @@ export const cityRadiusKm = (population?: number) => Math.min(25, Math.max(3, Ma
 
 // A city name for comparing two: accents, case and "St" for "Saint" don't count (Open-Meteo's "St Petersburg" is Qloo's
 // "Saint Petersburg").
-export const placeKey = (s?: string) => nameKey((s ?? "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "")).replace(/\bst\b/g, "saint").replace(/\bste\b/g, "sainte");
+const placeKey = (s?: string) => nameKey((s ?? "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "")).replace(/\bst\b/g, "saint").replace(/\bste\b/g, "sainte");
 
 // A locality named after the city that isn't the city: its own name holds the city's ("Trade Fair Moscow", "Osaka
 // Prefecture"). Its name, else null.

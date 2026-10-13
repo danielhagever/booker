@@ -1,6 +1,6 @@
 import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import { forArtist, forVenue, placeKey, type Named, type TourResult, type VenueResult } from "./booker.ts";
+import { forArtist, forVenue, type Named, type TourResult, type VenueResult } from "./booker.ts";
 import { AppError, Budget, REQUEST_BUDGET, allow } from "./limits.ts";
 import { MAX_ACTS, MAX_CITIES, MAX_NAME, MAX_PITCHES, clean, cityList, names, validId } from "./input.ts";
 
@@ -27,7 +27,7 @@ const failure = (e: unknown) => {
 };
 
 // Bump whenever the pipeline or the result format changes, so no one gets yesterday's logic.
-const CACHE_VERSION = 110;
+const CACHE_VERSION = 111;
 
 async function sha(s: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -116,16 +116,11 @@ export function tourSummary(r: TourResult): string {
   const head = order.length
     ? `${r.artist.name}'s crowd is strongest in ${order[0]}${order.length > 1 ? `, then ${list(order.slice(1))}` : ""}.${unscored.length ? ` Qloo has no city score for ${list(unscored)}.` : ""}`
     : `Qloo has no city score for ${r.artist.name} in ${list(unscored)}.`;
-  // "The American Cathedral in Paris" isn't followed by "in Paris" again. A room is placed where Qloo files it, with the
-  // tour city it fits when that is another (live: the Cavern Club, Liverpool, is Birkenhead's best fit).
-  const at = (name: string, c: string) => (name.toLowerCase().includes(c.toLowerCase()) ? name : `${name} in ${c}`);
-  const rooms = r.cities
-    .filter((x) => x.rooms[0])
-    .slice(0, 3)
-    .map((x) => {
-      const filed = x.rooms[0].city;
-      return filed && placeKey(filed) !== placeKey(city(x)) ? `${at(x.rooms[0].name, filed)} (for ${city(x)})` : at(x.rooms[0].name, city(x));
-    });
+  // A room is named with the tour city it fits, not placed in it: a city's best room can be a neighbour's (Birkenhead's
+  // is Liverpool's Cavern Club, live), and names can't tell which (Qloo files Gothenburg's rooms as Göteborgs Stad).
+  // "The American Cathedral in Paris" isn't followed by "for Paris".
+  const fit = (name: string, c: string) => (name.toLowerCase().includes(c.toLowerCase()) ? name : `${name} for ${c}`);
+  const rooms = r.cities.filter((x) => x.rooms[0]).slice(0, 3).map((x) => fit(x.rooms[0].name, city(x)));
   return `${head}${rooms.length ? ` Best-fit rooms: ${list(rooms)}.` : ""}`;
 }
 

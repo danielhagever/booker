@@ -97,13 +97,13 @@ test("MCP: both tools are listed with their guidance, and a call answers in word
 test("summaries rank only the cities Qloo scored", () => {
   const room = [{ name: "The Lexington" }];
   const lon = { label: "London, United Kingdom", rooms: room };
-  assert.equal(tourSummary({ artist: { name: "Wednesday" }, cities: [lon] } as any), "Qloo has no city score for Wednesday in London. Best-fit rooms: The Lexington in London.");
+  assert.equal(tourSummary({ artist: { name: "Wednesday" }, cities: [lon] } as any), "Qloo has no city score for Wednesday in London. Best-fit rooms: The Lexington for London.");
   const both: any = { artist: { name: "Wednesday" }, cities: [{ label: "Asheville, North Carolina", affinity: 0.996, rooms: [] }, lon] };
-  assert.equal(tourSummary(both), "Wednesday's crowd is strongest in Asheville (0.996). Qloo has no city score for London. Best-fit rooms: The Lexington in London.");
-  // A room is placed where Qloo files it, with the tour city it fits when that is another (live: Birkenhead's best room
-  // is Liverpool's Cavern Club); a spelling of the same city is the same city.
+  assert.equal(tourSummary(both), "Wednesday's crowd is strongest in Asheville (0.996). Qloo has no city score for London. Best-fit rooms: The Lexington for London.");
+  // A room is named with the city it fits, never placed by name (live: Birkenhead's best room is Liverpool's Cavern Club,
+  // and Qloo files Gothenburg's rooms as "Göteborgs Stad").
   const near: any = { artist: { name: "Wednesday" }, cities: [{ label: "Birkenhead, England", affinity: 0.99, rooms: [{ name: "The Cavern Club", city: "Liverpool" }] }, { label: "St Petersburg, Russia", affinity: 0.98, rooms: [{ name: "Aurora", city: "Saint Petersburg" }] }] };
-  assert.equal(tourSummary(near), "Wednesday's crowd is strongest in Birkenhead (0.990), then St Petersburg (0.980). Best-fit rooms: The Cavern Club in Liverpool (for Birkenhead) and Aurora in St Petersburg.");
+  assert.equal(tourSummary(near), "Wednesday's crowd is strongest in Birkenhead (0.990), then St Petersburg (0.980). Best-fit rooms: The Cavern Club for Birkenhead and Aurora for St Petersburg.");
 });
 
 test("MCP: the answer names pitches that were only a closest match, with alternatives, and pitches not found", async () => {
@@ -135,7 +135,7 @@ test("summaries agree in number and read naturally", () => {
   const lost = [{ verdict: "unscored", id: "e" }, { verdict: "unscored", id: "" }, { verdict: "unscored", id: "" }];
   assert.match(venueSummary({ ...base, inbox: lost }), /From your inbox of 3: 1 couldn't be scored and 2 aren't in Qloo\.$/);
   const tour: any = { artist: { name: "Wednesday" }, cities: [{ label: "Asheville, North Carolina", affinity: 0.996, rooms: [{ name: "The Orange Peel" }] }, { label: "Chicago, Illinois", affinity: 0.964, rooms: [] }] };
-  assert.equal(tourSummary(tour), "Wednesday's crowd is strongest in Asheville (0.996), then Chicago (0.964). Best-fit rooms: The Orange Peel in Asheville.");
+  assert.equal(tourSummary(tour), "Wednesday's crowd is strongest in Asheville (0.996), then Chicago (0.964). Best-fit rooms: The Orange Peel for Asheville.");
 });
 
 test("the page escapes everything it shows (names come from Qloo and from visitors)", () => {
