@@ -514,7 +514,7 @@ export async function forArtist(
           byCircle++;
           aroundCentre++;
         } else
-          trace.push({ step: "Check", detail: around === undefined ? `${why}, nor for ${radiusKm} km around its centre` : `${why}; most rooms ${radiusKm} km around its centre are across the border (${filedIn(abroad, true)}), so it keeps no score` });
+          trace.push({ step: "Check", detail: around === undefined ? `${why}, nor for ${radiusKm} km around its centre` : `${why}; ${there.length === 1 ? "the only room" : "most rooms"} ${radiusKm} km around its centre ${there.length === 1 ? "is" : "are"} across the border (${filedIn(abroad, true)}), so it keeps no score` });
       }
     } catch (e) {
       if (!(e instanceof QlooError && e.code === "locality")) throw e;

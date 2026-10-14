@@ -319,6 +319,8 @@ test("a city with no score by name is scored around its centre, keeping Qloo's r
     // A circle measures the area: a neighbour's rooms don't refuse the score (names can't be trusted to tell, live).
     ["the circle is mostly another city's", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK, ...CHICAGO], { affinity: 0.92, rooms: ["Room in Austin"], trace: 'Qloo gave Wednesday no score for "Austin, Texas" (read as Austin); scored for 10 km around the city centre instead, an area whose rooms Qloo files in Chicago and Austin; the rooms shown are Qloo\'s for the city' }],
     ["the circle is mostly across the border", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK, ...EL_PASO], { affinity: undefined, rooms: ["Room in Austin"], trace: `Qloo gave Wednesday no score for "Austin, Texas" (read as Austin); most rooms 10 km around its centre are across the border (El Paso, Mexico), so it keeps no score` }],
+    // One room, abroad (pass 53: "most rooms" for one).
+    ["the circle's only room is across the border", "Austin", "Austin, Travis County, Texas, United States", true, [EL_PASO[0]], { affinity: undefined, rooms: ["Room in Austin"], trace: `Qloo gave Wednesday no score for "Austin, Texas" (read as Austin); the only room 10 km around its centre is across the border (El Paso, Mexico), so it keeps no score` }],
     ["half the circle across the border", "Austin", "Austin, Travis County, Texas, United States", true, [MOHAWK, EL_PASO[0]], { affinity: 0.92, rooms: ["Room in Austin"] }],
   ] as const) {
     const m = mockFetch((c) => {
