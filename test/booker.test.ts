@@ -290,6 +290,21 @@ test("what a tour says and counts is said of the cities it kept; errors that are
   } finally {
     m.restore();
   }
+  // Austin, read as itself and scored by its circle, then refused for its rooms by name: neither "by a circle" nor the
+  // circle's Check line stays next to "couldn't score".
+  m = mockFetch((c) => {
+    if (insights(c, "urn:entity:artist") && austin(c)) return { body: { results: { entities: [] }, query: { localities: { signal: { name: "Austin", disambiguation: "Austin, Travis County, Texas, United States", location: { lat: 30.33, lon: -97.7 } } } } } };
+    if (insights(c, "urn:entity:artist") && c.params.get("signal.location")) return scoredCircle;
+    if (insights(c, "urn:entity:place") && /austin/i.test(c.params.get("filter.location.query") ?? "")) return { status: 400, body: { errors: [{ message: "Inferences could not be found for the specified location." }] } };
+    return standardQloo()(c);
+  });
+  try {
+    const r = await tour(["Chicago, Illinois", "Austin, Texas"]);
+    assert.ok(r.trace.some((t) => t.step === "Cities" && t.detail.startsWith("Scored Wednesday in 1 city with the city as Qloo's signal; no score for")), JSON.stringify(r.trace.map((t) => t.detail)));
+    assert.ok(!r.trace.some((t) => /around the city centre instead/.test(t.detail)));
+  } finally {
+    m.restore();
+  }
   // Austin misread 1,100 km away with a score there; Qloo refuses its circle: no score, not the far place's, and said.
   m = mockFetch((c) => {
     if (insights(c, "urn:entity:artist") && austin(c)) return { body: { results: { entities: [{ ...artist(10, "Wednesday", 0.955, ["Indie"], 0.9), query: { affinity: 0.97 } }] }, query: { localities: { signal: { name: "Elsewhere", disambiguation: "Elsewhere, Kansas, United States", location: { lat: 38.5, lon: -98 } } } } } };

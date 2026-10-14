@@ -101,7 +101,7 @@ test("summaries rank only the cities Qloo scored", () => {
   const both: any = { artist: { name: "Wednesday" }, cities: [{ label: "Asheville, North Carolina", affinity: 0.996, rooms: [] }, lon] };
   assert.equal(tourSummary(both), "Wednesday's crowd is strongest in Asheville (0.996). No city score for London. Best-fit rooms: The Lexington for London.");
   // Cities the request's calls didn't reach are named in the summary, not only in the trace (pass 58).
-  assert.equal(tourSummary({ ...both, notReached: ["Austin, Texas", "Boise"] }), "Wednesday's crowd is strongest in Asheville (0.996). No city score for London. Best-fit rooms: The Lexington for London. Not reached, as this search ran out of Qloo calls: Austin, Texas and Boise; ask again for them.");
+  assert.equal(tourSummary({ ...both, notReached: ["Austin, Texas", "Boise"] }), "Wednesday's crowd is strongest in Asheville (0.996). No city score for London. Best-fit rooms: The Lexington for London. Not reached, as this search ran out of Qloo calls: \"Austin, Texas\" and \"Boise\"; ask again for them.");
   // A room is named with the city it fits, never placed by name (live: Birkenhead's best room is Liverpool's Cavern Club,
   // and Qloo files Gothenburg's rooms as "Göteborgs Stad").
   const near: any = { artist: { name: "Wednesday" }, cities: [{ label: "Birkenhead, England", affinity: 0.99, rooms: [{ name: "The Cavern Club", city: "Liverpool" }] }, { label: "St Petersburg, Russia", affinity: 0.98, rooms: [{ name: "Aurora", city: "Saint Petersburg" }] }] };
@@ -224,8 +224,8 @@ test("the page offers Not it? whenever Qloo had other candidates, so a wrong exa
 
 
 test("cities a tour didn't reach are named in the agent's caveats and on the page, and kept when the tour is asked again (pass 58)", () => {
-  assert.equal(caveats({ notReached: ["Austin, Texas", "Boise"] }), "Cities not reached, as this request ran out of Qloo calls (this answer isn't saved; ask again, or with fewer cities): Austin, Texas, Boise.");
-  assert.match(page, /\(d\.notReached \|\| \[\]\)\.length \? `<div class="m">Not reached \(this search ran out of Qloo calls\): \$\{esc\(d\.notReached\.join\(", "\)\)\}<\/div>`/);
+  assert.equal(caveats({ notReached: ["Austin, Texas", "Boise"] }), "Cities not reached, as this request ran out of Qloo calls (this answer isn't saved; ask again, or with fewer cities): Austin, Texas; Boise.");
+  assert.match(page, /\(d\.notReached \|\| \[\]\)\.length \? `<div class="m">Not reached \(this search ran out of Qloo calls\): \$\{esc\(d\.notReached\.join\("; "\)\)\}<\/div>`/);
   assert.match(page, /d\.degraded \? `<p class="m" style="margin:10px 0 0">Not every city was reached; this result isn't saved\. Try again, or with fewer cities\.<\/p>`/);
   assert.match(page, /c\.refused \? "Qloo couldn't score this city or list its rooms\." : "Qloo listed no music rooms here\."/);
   assert.match(page, /cities: d\.cities\.map\(\(c\) => c\.input\)\.concat\(d\.notFound, d\.notReached \|\| \[\]\)/);
