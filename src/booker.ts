@@ -77,8 +77,10 @@ export interface TourResult extends Trace {
     note?: string; // how a city was read when what followed its comma didn't match it
     affinity?: number; // how much the city's taste likes the act (Qloo)
     rooms: { name: string; id: string; address?: string; lat?: number; lon?: number; affinity?: number; categories?: string[] }[];
+    refused?: string; // Qloo's answer when it couldn't score the city at all
   }[];
   notFound: string[];
+  notReached: string[]; // cities this request's calls didn't reach (the answer isn't saved)
 }
 
 const pick = (r: Resolved): Pick => ({
@@ -478,6 +480,12 @@ export async function forArtist(
     let where: Where = c.query;
     let found: Entity[] | undefined; // the rooms of the circle around the city, when it was asked for
     let listed: Entity[] = []; // the rooms asked for, by the city's name or its circle
+    // What is said and counted of a city is kept only when the city is (pass 58: a city the calls didn't finish was
+    // counted as scored by its circle, and its Check line stayed).
+    const lines: Trace["trace"] = [];
+    let circled = false; // asked for as a circle around its centre
+    let byItsCircle = false; // scored by that circle
+    let refused: string | undefined;
     try {
       // How much this city's taste likes the act: the act alone, scored with the city as the signal.
       const r = await q.artists({ entities: [], city: where, only: [a.id], take: 1 });
@@ -511,22 +519,21 @@ export async function forArtist(
         const border = abroad.length ? `; left out ${abroad.length} ${abroad.length === 1 ? "room" : "rooms"} across the border (${filedIn(abroad, true)})` : "";
         const filed = home.length ? ` (its rooms are filed in ${filedIn(home)})` : "";
         if (misread) {
-          trace.push({ step: "Check", detail: `${why}; asked again for ${radiusKm} km around the city centre${filed}${border}${mostlyAbroad ? `; ${there.length === 1 ? "the only room there is" : "most rooms there are"} across the border, so it has no score` : around === undefined ? "; no score there either" : ""}` });
+          lines.push({ step: "Check", detail: `${why}; asked again for ${radiusKm} km around the city centre${filed}${border}${mostlyAbroad ? `; ${there.length === 1 ? "the only room there is" : "most rooms there are"} across the border, so it has no score` : around === undefined ? "; no score there either" : ""}` });
           where = circle;
           found = there; // rooms abroad are left out below, with every city's
           affinity = mostlyAbroad ? undefined : around;
-          if (affinity !== undefined) byCircle++;
+          byItsCircle = affinity !== undefined;
           qlooCity = undefined;
-          aroundCentre++;
+          circled = true;
         } else if (around !== undefined && !mostlyAbroad) {
           // The rooms shown stay Qloo's for the city's name; the circle's rooms only say whose area the score is.
           const area = home.length ? `, an area whose rooms Qloo files in ${filedIn(home)}` : "";
-          trace.push({ step: "Check", detail: `${why}; scored for ${radiusKm} km around the city centre instead${area}; the rooms shown are Qloo's for the city` });
+          lines.push({ step: "Check", detail: `${why}; scored for ${radiusKm} km around the city centre instead${area}; the rooms shown are Qloo's for the city` });
           affinity = around;
-          byCircle++;
-          aroundCentre++;
+          byItsCircle = circled = true;
         } else
-          trace.push({ step: "Check", detail: around === undefined ? `${why}, nor for ${radiusKm} km around its centre` : `${why}; ${there.length === 1 ? "the only room" : "most rooms"} ${radiusKm} km around its centre ${there.length === 1 ? "is" : "are"} across the border (${filedIn(abroad, true)}), so it keeps no score` });
+          lines.push({ step: "Check", detail: around === undefined ? `${why}, nor for ${radiusKm} km around its centre` : `${why}; ${there.length === 1 ? "the only room" : "most rooms"} ${radiusKm} km around its centre ${there.length === 1 ? "is" : "are"} across the border (${filedIn(abroad, true)}), so it keeps no score` });
       }
       listed = found ?? (await q.venues([a.id], where, 12));
     } catch (e) {
@@ -542,9 +549,14 @@ export async function forArtist(
       // "Inferences could not be found for the specified location"): that city has no score or rooms, and the rest of the
       // tour stands (pass 57: the whole tour was that 400).
       if (!(e instanceof QlooError && e.status === 400)) throw e;
-      trace.push({ step: "Check", detail: `Qloo couldn't score ${a.name} for "${c.query}" (${e.message}), so it has no score or rooms there` });
-      affinity = undefined; // and no rooms: listed is set last in the try
+      lines.splice(0, lines.length, { step: "Check", detail: `Qloo couldn't score ${a.name} for "${c.query}"${qlooCity ? `, which it read as ${qlooCity}` : ""} (${e.message}), so it has no score or rooms there` });
+      affinity = qlooCity = undefined; // and no rooms: listed is set last in the try
+      circled = byItsCircle = false;
+      refused = e.message;
     }
+    trace.push(...lines);
+    if (circled) aroundCentre++;
+    if (byItsCircle) byCircle++;
     // A room in another country is never the city's, whoever listed it (live: Qloo's rooms for "Windsor, Ontario"
     // began with Detroit's Saint Andrew's Hall).
     const across = listed.filter((v) => !sameNation(v, c));
@@ -560,6 +572,7 @@ export async function forArtist(
       lon: c.lon,
       ...(qlooCity ? { qlooCity } : {}),
       ...(affinity !== undefined ? { affinity } : {}),
+      ...(refused ? { refused } : {}),
       rooms: rooms.map((r) => ({
         name: r.name,
         id: r.id,
@@ -588,6 +601,7 @@ export async function forArtist(
     artist: pick(found[0]),
     cities,
     notFound: notFoundCities,
+    notReached,
     trace,
     calls: q.calls,
     ours: [

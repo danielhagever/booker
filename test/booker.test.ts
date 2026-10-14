@@ -266,6 +266,77 @@ test("one city Qloo can't score, or the request's calls running out, doesn't sin
   }
 });
 
+test("what a tour says and counts is said of the cities it kept; errors that aren't one city's still stop it (pass 58)", async () => {
+  const tour = (cities: string[], budget = new Budget(48)) => forArtist(ENV(memoryKV().kv) as any, budget, { artist: { name: "Wednesday" }, cities });
+  const austin = (c: Call) => /austin/i.test(c.params.get("signal.location.query") ?? "");
+  const scoredCircle = { body: { results: { entities: [{ ...artist(10, "Wednesday", 0.955, ["Indie"], 0.9), query: { affinity: 0.92 } }] } } };
+  // Austin, read as itself with no score, is scored by its circle; the calls run out before its rooms by name: it is
+  // not reached, and neither its Check line nor "by a circle" stays.
+  let budget = new Budget(48);
+  let m = mockFetch((c) => {
+    if (insights(c, "urn:entity:artist") && austin(c)) return { body: { results: { entities: [] }, query: { localities: { signal: { name: "Austin", disambiguation: "Austin, Travis County, Texas, United States", location: { lat: 30.33, lon: -97.7 } } } } } };
+    if (insights(c, "urn:entity:artist") && c.params.get("signal.location")) return scoredCircle;
+    if (insights(c, "urn:entity:place") && c.params.get("filter.location")) {
+      budget.max = budget.used;
+      return { body: { results: { entities: [venue(7, "Mohawk", "Austin", "Texas", undefined, 0.95)] } } };
+    }
+    return standardQloo()(c);
+  });
+  try {
+    const r = await tour(["Chicago, Illinois", "Austin, Texas"], budget);
+    assert.deepEqual(r.notReached, ["Austin, Texas"]);
+    assert.ok(r.trace.some((t) => t.step === "Cities" && t.detail === 'Scored Wednesday in 1 city with the city as Qloo\'s signal; not reached, as this request ran out of Qloo calls: "Austin, Texas"'), JSON.stringify(r.trace.map((t) => t.detail)));
+    assert.ok(!r.trace.some((t) => /around the city centre instead/.test(t.detail)));
+  } finally {
+    m.restore();
+  }
+  // Austin misread 1,100 km away with a score there; Qloo refuses its circle: no score, not the far place's, and said.
+  m = mockFetch((c) => {
+    if (insights(c, "urn:entity:artist") && austin(c)) return { body: { results: { entities: [{ ...artist(10, "Wednesday", 0.955, ["Indie"], 0.9), query: { affinity: 0.97 } }] }, query: { localities: { signal: { name: "Elsewhere", disambiguation: "Elsewhere, Kansas, United States", location: { lat: 38.5, lon: -98 } } } } } };
+    if (insights(c, "urn:entity:artist") && c.params.get("signal.location")) return { status: 400, body: { errors: [{ message: "Inferences could not be found for the specified location." }] } };
+    return standardQloo()(c);
+  });
+  try {
+    const r = await tour(["Chicago, Illinois", "Austin, Texas"]);
+    const a = r.cities.find((x) => x.input === "Austin, Texas")!;
+    assert.equal(a.affinity, undefined);
+    assert.equal(a.qlooCity, undefined);
+    assert.equal(a.refused, "Qloo answered 400: Inferences could not be found for the specified location.");
+    assert.ok(r.trace.some((t) => t.detail.startsWith('Qloo couldn\'t score Wednesday for "Austin, Texas", which it read as Elsewhere, Kansas, United States (')), JSON.stringify(r.trace.map((t) => t.detail)));
+  } finally {
+    m.restore();
+  }
+  // Errors that aren't one city's stop the tour: Qloo's rate limit, the month's calls used up, the geocoder down.
+  for (const [what, answer, status, says] of [
+    ["rate limit", { status: 429, body: {} }, 429, /rate limit/],
+    ["month used up", { status: 429, body: {}, headers: { "x-month-ratelimit-remaining": "0" } }, 503, /used all of its Qloo API calls for the month/],
+  ] as const) {
+    m = mockFetch((c) => (insights(c, "urn:entity:artist") && austin(c) ? (answer as any) : standardQloo()(c)));
+    try {
+      await assert.rejects(tour(["Chicago, Illinois", "Austin, Texas"]), (e: Error & { status?: number }) => e.status === status && says.test(e.message), what);
+    } finally {
+      m.restore();
+    }
+  }
+  m = mockFetch((c) => (c.host === "geocoding-api.open-meteo.com" && /austin/i.test(c.params.get("name") ?? "") ? { status: 500, body: {} } : standardQloo()(c)));
+  try {
+    await assert.rejects(tour(["Chicago, Illinois", "Austin, Texas"]), (e: Error & { status?: number }) => e.status === 502 && /city lookup service didn't answer/.test(e.message));
+  } finally {
+    m.restore();
+  }
+  // Out of calls in the first city's scoring: the tour says so.
+  budget = new Budget(48);
+  m = mockFetch((c) => {
+    if (insights(c, "urn:entity:artist") && c.params.get("signal.location.query")) budget.max = budget.used;
+    return standardQloo()(c);
+  });
+  try {
+    await assert.rejects(tour(["Chicago, Illinois", "Austin, Texas"], budget), (e: Error & { status?: number }) => e.status === 503 && /Try fewer cities/.test(e.message));
+  } finally {
+    m.restore();
+  }
+});
+
 test("two acts joined by & or and in a list are both used when each is an exact match", async () => {
   const art = (id: string, name: string) => ({ id, name, types: ["urn:entity:artist"] });
   const db: Record<string, any[]> = {

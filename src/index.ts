@@ -27,7 +27,7 @@ const failure = (e: unknown) => {
 };
 
 // Bump whenever the pipeline or the result format changes, so no one gets yesterday's logic.
-const CACHE_VERSION = 122;
+const CACHE_VERSION = 123;
 
 async function sha(s: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -121,12 +121,14 @@ export function tourSummary(r: TourResult): string {
   // "The American Cathedral in Paris" isn't followed by "for Paris".
   const fit = (name: string, c: string) => (name.toLowerCase().includes(c.toLowerCase()) ? name : `${name} for ${c}`);
   const rooms = r.cities.filter((x) => x.rooms[0]).slice(0, 3).map((x) => fit(x.rooms[0].name, city(x)));
-  return `${head}${rooms.length ? ` Best-fit rooms: ${list(rooms)}.` : ""}`;
+  // Cities the request's calls didn't reach are named here too, not only in the trace (pass 58).
+  const missed = r.notReached?.length ? ` Not reached, as this search ran out of Qloo calls: ${list(r.notReached)}; ask again for them.` : "";
+  return `${head}${rooms.length ? ` Best-fit rooms: ${list(rooms)}.` : ""}${missed}`;
 }
 
 // What an agent should tell the person before relying on the answer: every name that was only a closest
 // match or shared by several Qloo entries (venue, acts, pitches, artist), and every name not found.
-function caveats(r: { acts?: VenueResult["acts"]; venue?: VenueResult["venue"]; artist?: TourResult["artist"]; unresolved?: string[]; inbox?: VenueResult["inbox"]; notFound?: string[]; cities?: TourResult["cities"] }): string {
+export function caveats(r: { acts?: VenueResult["acts"]; venue?: VenueResult["venue"]; artist?: TourResult["artist"]; unresolved?: string[]; inbox?: VenueResult["inbox"]; notFound?: string[]; notReached?: string[]; cities?: TourResult["cities"] }): string {
   const found = (r.inbox ?? []).filter((p) => p.id);
   const picks = [r.venue, ...(r.acts ?? []), r.artist].filter((x): x is NonNullable<typeof x> => !!x).map((p) => ({ p, what: "" }));
   const parts = [...picks, ...found.map((p) => ({ p, what: "Pitch " }))]
@@ -137,6 +139,7 @@ function caveats(r: { acts?: VenueResult["acts"]; venue?: VenueResult["venue"]; 
   if (lost.length) parts.push(`Pitches not found in Qloo: ${lost.join(", ")}.`);
   for (const c of r.cities ?? []) if (c.note) parts.push(c.note);
   if (r.notFound?.length) parts.push(`Cities left out (not found, or Qloo couldn't place them): ${r.notFound.join(", ")}.`);
+  if (r.notReached?.length) parts.push(`Cities not reached, as this request ran out of Qloo calls (this answer isn't saved; ask again, or with fewer cities): ${r.notReached.join(", ")}.`);
   return parts.join(" ");
 }
 
