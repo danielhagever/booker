@@ -224,6 +224,9 @@ test("the page offers Not it? whenever Qloo had other candidates, so a wrong exa
 
 
 test("cities a tour didn't reach are named in the agent's caveats and on the page, and kept when the tour is asked again (pass 58)", () => {
+  // Cities not placed are listed the same way (pass 60: "Xyzzyville, Texas, Qwertyton, Ohio" read as four).
+  assert.equal(caveats({ notFound: ["Xyzzyville, Texas", "Qwertyton, Ohio"] }), "Cities left out (not found, or Qloo couldn't place them): Xyzzyville, Texas; Qwertyton, Ohio.");
+  assert.match(page, /Not placed: \$\{esc\(d\.notFound\.join\("; "\)\)\}/);
   assert.equal(caveats({ notReached: ["Austin, Texas", "Boise"] }), "Cities not reached, as this request ran out of Qloo calls (this answer isn't saved; ask again, or with fewer cities): Austin, Texas; Boise.");
   assert.match(page, /\(d\.notReached \|\| \[\]\)\.length \? `<div class="m">Not reached \(this search ran out of Qloo calls\): \$\{esc\(d\.notReached\.join\("; "\)\)\}<\/div>`/);
   assert.match(page, /d\.degraded \? `<p class="m" style="margin:10px 0 0">Not every city was reached; this result isn't saved\. Try again, or with fewer cities\.<\/p>`/);

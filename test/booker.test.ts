@@ -254,6 +254,7 @@ test("one city Qloo can't score, or the request's calls running out, doesn't sin
     const r = await tour(["Chicago, Illinois", "Austin, Texas"]);
     assert.deepEqual(r.notFound, ["Austin, Texas"]);
     assert.deepEqual(r.cities.map((x) => x.input), ["Chicago, Illinois"]);
+    assert.ok(r.trace.some((t) => t.step === "Cities" && t.detail.endsWith('; not placed: "Austin, Texas"')), JSON.stringify(r.trace.map((t) => t.detail)));
   } finally {
     m.restore();
   }
