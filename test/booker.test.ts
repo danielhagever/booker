@@ -187,6 +187,85 @@ test("for an artist: cities by Qloo's affinity there, the rooms that fit, unknow
   }
 });
 
+test("one city Qloo can't score, or the request's calls running out, doesn't sink the tour (pass 57)", async () => {
+  const tour = (cities: string[], budget = new Budget(48)) => forArtist(ENV(memoryKV().kv) as any, budget, { artist: { name: "Wednesday" }, cities });
+  // Qloo has no data for a place (live: "Lisboa, 1100-148", read as Mozambique, whose circle is this 400).
+  let m = mockFetch((c) =>
+    insights(c, "urn:entity:artist") && /austin/i.test(c.params.get("signal.location.query") ?? "")
+      ? { status: 400, body: { errors: [{ message: "Inferences could not be found for the specified location." }] } }
+      : standardQloo()(c),
+  );
+  try {
+    const r = await tour(["Chicago, Illinois", "Austin, Texas"]);
+    const austin = r.cities.find((x) => x.input === "Austin, Texas")!;
+    assert.equal(austin.affinity, undefined);
+    assert.deepEqual(austin.rooms, []);
+    assert.ok(r.cities.find((x) => x.input === "Chicago, Illinois")!.affinity !== undefined);
+    assert.ok(r.trace.some((t) => t.detail === 'Qloo couldn\'t score Wednesday for "Austin, Texas" (Qloo answered 400: Inferences could not be found for the specified location.), so it has no score or rooms there'), JSON.stringify(r.trace.map((t) => t.detail)));
+    assert.equal(r.degraded, false);
+  } finally {
+    m.restore();
+  }
+  // The calls run out after the first city's rooms: it stands, the second is named, and the answer isn't kept.
+  let budget = new Budget(48);
+  m = mockFetch((c) => {
+    if (insights(c, "urn:entity:place")) budget.max = budget.used;
+    return standardQloo()(c);
+  });
+  try {
+    const r = await tour(["Chicago, Illinois", "Austin, Texas"], budget);
+    assert.deepEqual(r.cities.map((x) => x.input), ["Chicago, Illinois"]);
+    assert.equal(r.degraded, true);
+    assert.ok(r.trace.some((t) => t.step === "Cities" && t.detail.endsWith('; not reached, as this request ran out of Qloo calls: "Austin, Texas"')), JSON.stringify(r.trace.map((t) => t.detail)));
+  } finally {
+    m.restore();
+  }
+  // Out of calls before the first city: that is said, not "None of those cities could be placed".
+  budget = new Budget(48);
+  m = mockFetch((c) => {
+    if (qloo(c) && c.path === "/search") budget.max = budget.used;
+    return standardQloo()(c);
+  });
+  try {
+    await assert.rejects(tour(["Chicago, Illinois", "Austin, Texas"], budget), (e: Error & { status?: number }) => e.status === 503 && /This tour needs more Qloo calls than one request allows\. Try fewer cities\./.test(e.message));
+  } finally {
+    m.restore();
+  }
+  // The calls run out while the second city is scored: the first stands.
+  budget = new Budget(48);
+  m = mockFetch((c) => {
+    if (c.host === "geocoding-api.open-meteo.com" && /austin/i.test(c.params.get("name") ?? "")) budget.max = budget.used;
+    return standardQloo()(c);
+  });
+  try {
+    const r = await tour(["Chicago, Illinois", "Austin, Texas"], budget);
+    assert.deepEqual(r.cities.map((x) => x.input), ["Chicago, Illinois"]);
+    assert.equal(r.degraded, true);
+  } finally {
+    m.restore();
+  }
+  // A city the geocoder places but Qloo can't resolve is named as not placed; the rest stands.
+  m = mockFetch((c) =>
+    insights(c, "urn:entity:artist") && /austin/i.test(c.params.get("signal.location.query") ?? "")
+      ? { status: 400, body: { errors: [{ message: "signal.location.query is unable to resolve to a valid locality.", path: "signal.location" }] } }
+      : standardQloo()(c),
+  );
+  try {
+    const r = await tour(["Chicago, Illinois", "Austin, Texas"]);
+    assert.deepEqual(r.notFound, ["Austin, Texas"]);
+    assert.deepEqual(r.cities.map((x) => x.input), ["Chicago, Illinois"]);
+  } finally {
+    m.restore();
+  }
+  // Cities Qloo can't place are named; when none is placed, that is the answer.
+  m = mockFetch(standardQloo());
+  try {
+    await assert.rejects(tour(["Zzqx, Nowhere", "Zzqy, Elsewhere"]), (e: Error & { status?: number }) => e.status === 400 && /None of those cities could be placed/.test(e.message));
+  } finally {
+    m.restore();
+  }
+});
+
 test("two acts joined by & or and in a list are both used when each is an exact match", async () => {
   const art = (id: string, name: string) => ({ id, name, types: ["urn:entity:artist"] });
   const db: Record<string, any[]> = {

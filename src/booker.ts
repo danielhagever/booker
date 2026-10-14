@@ -450,8 +450,19 @@ export async function forArtist(
   const cities: TourResult["cities"] = [];
   let aroundCentre = 0; // cities asked for by their centre
   let byCircle = 0; // cities whose score came from that circle
-  for (const text of input.cities) {
-    const c = await cityCenter(env.CACHE, budget, text);
+  // The request's calls can run out before the last city (five cities with slow lookups use all 48): the cities scored
+  // stand, the rest are named, and the answer isn't kept (pass 57: the whole tour was a 503).
+  const notReached: string[] = [];
+  const outOfCalls = (e: unknown) => e instanceof AppError && e.status === 503 && budget.left() < 2;
+  for (const [i, text] of input.cities.entries()) {
+    let c: Awaited<ReturnType<typeof cityCenter>>;
+    try {
+      c = await cityCenter(env.CACHE, budget, text);
+    } catch (e) {
+      if (!outOfCalls(e)) throw e;
+      notReached.push(...input.cities.slice(i));
+      break;
+    }
     if (!c) {
       notFoundCities.push(text);
       continue;
@@ -466,6 +477,7 @@ export async function forArtist(
     let qlooCity: string | undefined;
     let where: Where = c.query;
     let found: Entity[] | undefined; // the rooms of the circle around the city, when it was asked for
+    let listed: Entity[] = []; // the rooms asked for, by the city's name or its circle
     try {
       // How much this city's taste likes the act: the act alone, scored with the city as the signal.
       const r = await q.artists({ entities: [], city: where, only: [a.id], take: 1 });
@@ -516,14 +528,25 @@ export async function forArtist(
         } else
           trace.push({ step: "Check", detail: around === undefined ? `${why}, nor for ${radiusKm} km around its centre` : `${why}; ${there.length === 1 ? "the only room" : "most rooms"} ${radiusKm} km around its centre ${there.length === 1 ? "is" : "are"} across the border (${filedIn(abroad, true)}), so it keeps no score` });
       }
+      listed = found ?? (await q.venues([a.id], where, 12));
     } catch (e) {
-      if (!(e instanceof QlooError && e.code === "locality")) throw e;
-      notFoundCities.push(text);
-      continue;
+      if (e instanceof QlooError && e.code === "locality") {
+        notFoundCities.push(text);
+        continue;
+      }
+      if (outOfCalls(e)) {
+        notReached.push(...input.cities.slice(i));
+        break;
+      }
+      // Qloo can refuse a place it has no data for (live: "Lisboa, 1100-148", read as Lisboa, Mozambique, whose circle is
+      // "Inferences could not be found for the specified location"): that city has no score or rooms, and the rest of the
+      // tour stands (pass 57: the whole tour was that 400).
+      if (!(e instanceof QlooError && e.status === 400)) throw e;
+      trace.push({ step: "Check", detail: `Qloo couldn't score ${a.name} for "${c.query}" (${e.message}), so it has no score or rooms there` });
+      affinity = undefined; // and no rooms: listed is set last in the try
     }
     // A room in another country is never the city's, whoever listed it (live: Qloo's rooms for "Windsor, Ontario"
     // began with Detroit's Saint Andrew's Hall).
-    const listed = found ?? (await q.venues([a.id], where, 12));
     const across = listed.filter((v) => !sameNation(v, c));
     if (across.length && !found) trace.push({ step: "Check", detail: `Left out ${across.length} of Qloo's rooms for "${c.query}" across the border (${filedIn(across, true)})` });
     const rooms = showRooms(listed.filter((v) => sameNation(v, c)), 6);
@@ -547,6 +570,7 @@ export async function forArtist(
       })),
     });
   }
+  if (!cities.length && notReached.length) throw new QlooError("This tour needs more Qloo calls than one request allows. Try fewer cities.", 503);
   if (!cities.length) throw new AppError("None of those cities could be placed. Try a city with its state or country, like \"Austin, Texas\".", 400);
   cities.sort((x, y) => (y.affinity ?? -1) - (x.affinity ?? -1));
   // Cities Qloo gave no score are named, not counted as scored (live: "Scored ... in 5 cities" with 3 unscored).
@@ -555,7 +579,7 @@ export async function forArtist(
   trace.push({
     step: "Cities",
     // "No score" rather than "Qloo had no score": a circle's score is held back when most of its rooms are abroad.
-    detail: `${unscored.length === cities.length ? `No score for ${a.name} in ${cities.length === 1 ? "this city" : "these cities"}${aroundCentre ? ` (${cities.length === 1 ? "also" : `${aroundCentre} also`} asked as a circle around the centre)` : ""}` : `Scored ${a.name} in ${n(scored, "city", "cities")}${byCircle === 0 ? " with the city as Qloo's signal" : byCircle === scored ? (scored === 1 ? " by a circle around its centre" : ", each by a circle around its centre") : ` (${scored - byCircle} by the city's name, ${byCircle} by a circle around its centre)`}`}${unscored.length && unscored.length < cities.length ? `; no score for ${unscored.map((x) => `"${x}"`).join(", ")}` : ""}${notFoundCities.length ? `; not placed: ${notFoundCities.join(", ")}` : ""}`,
+    detail: `${unscored.length === cities.length ? `No score for ${a.name} in ${cities.length === 1 ? "this city" : "these cities"}${aroundCentre ? ` (${cities.length === 1 ? "also" : `${aroundCentre} also`} asked as a circle around the centre)` : ""}` : `Scored ${a.name} in ${n(scored, "city", "cities")}${byCircle === 0 ? " with the city as Qloo's signal" : byCircle === scored ? (scored === 1 ? " by a circle around its centre" : ", each by a circle around its centre") : ` (${scored - byCircle} by the city's name, ${byCircle} by a circle around its centre)`}`}${unscored.length && unscored.length < cities.length ? `; no score for ${unscored.map((x) => `"${x}"`).join(", ")}` : ""}${notFoundCities.length ? `; not placed: ${notFoundCities.join(", ")}` : ""}${notReached.length ? `; not reached, as this request ran out of Qloo calls: ${notReached.map((x) => `"${x}"`).join(", ")}` : ""}`,
   });
   trace.push({ step: "Rooms", detail: `Asked Qloo for the live music venues and concert halls in each city whose visitors' taste fits ${a.name}'s fans` });
 
@@ -576,7 +600,7 @@ export async function forArtist(
       "Rooms are the places Qloo tags as live music venues or concert halls, in Qloo's order; a place mainly used as a museum, gallery, flea market, film studio or housing (its first categories or its name say so), or a closed one (Qloo says so, or its name: \"CLOSED - ...\"), is left out. Each room shows its main categories: some are classical halls or arenas, so check that a room books your kind of show.",
       "A city's score compares the act with everything that city likes; it is a relative signal, not a ticket forecast.",
     ],
-    degraded: false,
+    degraded: notReached.length > 0, // the cities not reached may fit next time (the city lookups are cached)
     computedAt: Date.now(),
   };
 }
