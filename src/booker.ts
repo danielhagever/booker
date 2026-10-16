@@ -6,7 +6,7 @@
 import { AppError, type Budget } from "./limits.ts";
 import { Qloo, QlooError, type Entity, type QlooEnv, type Where } from "./qloo.ts";
 import { nameKey, resolveArtist, resolveChosen, resolveVenue, type Choice, type Resolved } from "./resolve.ts";
-import { cityCenter, cityRadiusKm, countryName, km, nation, readNote } from "./city.ts";
+import { cityCenter, cityRadiusKm, countryName, km, nation, readNote, type Place } from "./city.ts";
 import { MAX_ACTS, MAX_PITCHES } from "./input.ts";
 
 export interface Named {
@@ -456,25 +456,43 @@ export async function forArtist(
   // stand, the rest are named, and the answer isn't kept (pass 57: the whole tour was a 503).
   const notReached: string[] = [];
   const outOfCalls = (e: unknown) => e instanceof AppError && e.status === 503 && budget.left() < 2;
+  // Every city is placed and asked for by its name first, so a reading two of them share shows before any is scored
+  // (pass 62: Saint-Jérôme, Saint-Eustache and Saint-Jean-sur-Richelieu were all Qloo's Saint-Laurent, a Montreal borough
+  // 17 to 41 km off, and took its score). Qloo's answer for a city it refuses (a 400) is kept to be said below.
+  const placed: { text: string; c: Place; r?: Awaited<ReturnType<Qloo["artists"]>>; error?: QlooError }[] = [];
   for (const [i, text] of input.cities.entries()) {
-    let c: Awaited<ReturnType<typeof cityCenter>>;
+    let c: Place | null = null;
     try {
       c = await cityCenter(env.CACHE, budget, text);
+      if (!c) {
+        notFoundCities.push(text);
+        continue;
+      }
+      // The same city typed twice ("Chicago, Illinois" and "chicago") is scored once; so are two places within 2 km.
+      const again = placed.find((x) => km(x.c, c!) < 2);
+      if (again) {
+        trace.push({ step: "Check", detail: `"${text}" is within 2 km of "${again.text}"; it's scored once` });
+        continue;
+      }
+      placed.push({ text, c, r: await q.artists({ entities: [], city: c.query, only: [a.id], take: 1 }) });
     } catch (e) {
-      if (!outOfCalls(e)) throw e;
-      notReached.push(...input.cities.slice(i));
-      break;
+      if (e instanceof QlooError && e.code === "locality") {
+        notFoundCities.push(text);
+        continue;
+      }
+      if (outOfCalls(e)) {
+        notReached.push(...input.cities.slice(i));
+        break;
+      }
+      if (!(c && e instanceof QlooError && e.status === 400)) throw e;
+      placed.push({ text, c, error: e });
     }
-    if (!c) {
-      notFoundCities.push(text);
-      continue;
-    }
-    // The same city typed twice ("Chicago, Illinois" and "chicago") is scored once.
-    const again = cities.find((x) => km(x, c) < 2);
-    if (again) {
-      trace.push({ step: "Check", detail: `"${text}" is the same city as "${again.input}"; it's scored once` });
-      continue;
-    }
+  }
+  // Two or more cities Qloo reads as one place are each misread (no correct reading shared one in 120 recorded cities).
+  const readAs = (l?: { name: string; lat: number; lon: number }) => (l ? `${l.name}|${l.lat.toFixed(3)},${l.lon.toFixed(3)}` : "");
+  const sharers = (x: (typeof placed)[number]) => placed.filter((y) => y !== x && !!y.r?.locality && readAs(y.r.locality) === readAs(x.r?.locality));
+  for (const [i, item] of placed.entries()) {
+    const { text, c } = item;
     let affinity: number | undefined;
     let qlooCity: string | undefined;
     let where: Where = c.query;
@@ -487,8 +505,9 @@ export async function forArtist(
     let byItsCircle = false; // scored by that circle
     let refused: string | undefined;
     try {
-      // How much this city's taste likes the act: the act alone, scored with the city as the signal.
-      const r = await q.artists({ entities: [], city: where, only: [a.id], take: 1 });
+      // How much this city's taste likes the act: the act alone, scored with the city as the signal (asked above).
+      if (item.error) throw item.error;
+      const r = item.r!;
       affinity = r.list.find((x) => x.id === a.id)?.affinity;
       if (r.locality) qlooCity = r.locality.name;
       // Qloo can read a city as somewhere else (live: "Honolulu, Hawaii" as Honolulu County, 756 km off; "Gothenburg,
@@ -506,7 +525,8 @@ export async function forArtist(
       // Rooms move to the circle only when the name was misread; a city read as itself that just has no score (Nagoya,
       // Daly City) keeps Qloo's rooms for it (Daly City's Cow Palace is outside its 3 km circle) and takes the circle's
       // score. A city read as something named after it with no score (Moscow's trade fair, Osaka Prefecture) was misread.
-      const misread = off > 50 || !!part || (affinity === undefined && !!namedAfter(r.locality, c));
+      const others = sharers(item);
+      const misread = off > 50 || others.length > 0 || !!part || (affinity === undefined && !!namedAfter(r.locality, c));
       if (misread || affinity === undefined) {
         const radiusKm = cityRadiusKm(c.population);
         const circle = { lat: c.lat, lon: c.lon, radiusM: radiusKm * 1000 };
@@ -515,7 +535,7 @@ export async function forArtist(
         const home = there.filter((v) => sameNation(v, c));
         const abroad = there.filter((v) => !home.includes(v));
         const mostlyAbroad = abroad.length * 2 > there.length;
-        const why = off > 50 ? `Qloo read "${c.query}" as ${r.locality!.name.split(",").slice(0, 2).join(",")}, ${Math.round(off)} km away` : part ? `Qloo read "${c.query}" as only ${part}, a part of it` : `Qloo gave ${a.name} no score for "${c.query}"${r.locality ? ` (read as ${r.locality.name.split(",")[0]})` : ""}`;
+        const why = off > 50 ? `Qloo read "${c.query}" as ${r.locality!.name.split(",").slice(0, 2).join(",")}, ${Math.round(off)} km away` : others.length ? `Qloo read "${c.query}" as ${r.locality!.name.split(",").slice(0, 2).join(",")}, ${Math.round(off)} km away, as it read ${others.map((y) => `"${y.c.query}"`).join(" and ")}` : part ? `Qloo read "${c.query}" as only ${part}, a part of it` : `Qloo gave ${a.name} no score for "${c.query}"${r.locality ? ` (read as ${r.locality.name.split(",")[0]})` : ""}`;
         const border = abroad.length ? `; left out ${abroad.length} ${abroad.length === 1 ? "room" : "rooms"} across the border (${filedIn(abroad, true)})` : "";
         const filed = home.length ? ` (its rooms are filed in ${filedIn(home)})` : "";
         if (misread) {
@@ -542,7 +562,7 @@ export async function forArtist(
         continue;
       }
       if (outOfCalls(e)) {
-        notReached.push(...input.cities.slice(i));
+        notReached.unshift(...placed.slice(i).map((x) => x.text)); // before the ones the first round didn't reach
         break;
       }
       // Qloo can refuse a place it has no data for (live: "Lisboa, 1100-148", read as Lisboa, Mozambique, whose circle is
@@ -613,6 +633,7 @@ export async function forArtist(
       "Qloo measures taste, not capacity, fees or availability: check that a room's size fits before you pitch it.",
       "Rooms are the places Qloo tags as live music venues or concert halls, in Qloo's order; a place mainly used as a museum, gallery, flea market, film studio or housing (its first categories or its name say so), or a closed one (Qloo says so, or its name: \"CLOSED - ...\"), is left out. Each room shows its main categories: some are classical halls or arenas, so check that a room books your kind of show.",
       "A city's score compares the act with everything that city likes; it is a relative signal, not a ticket forecast.",
+      "Qloo can read a city as a nearby place under 50 km away (Saint-Jérôme as Montreal's Saint-Laurent): alone, the city then takes that place's score; in a tour, cities Qloo reads as one place are each scored by a circle around their centre.",
     ],
     degraded: notReached.length > 0, // the cities not reached may fit next time (the city lookups are cached)
     computedAt: Date.now(),

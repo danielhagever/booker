@@ -231,15 +231,28 @@ test("one city Qloo can't score, or the request's calls running out, doesn't sin
   } finally {
     m.restore();
   }
-  // The calls run out while the second city is scored: the first stands.
+  // The calls run out while the second city is placed: every city is placed and read before any is scored (pass 62), so
+  // the first has none left for its rooms either, and the tour says so.
   budget = new Budget(48);
   m = mockFetch((c) => {
     if (c.host === "geocoding-api.open-meteo.com" && /austin/i.test(c.params.get("name") ?? "")) budget.max = budget.used;
     return standardQloo()(c);
   });
   try {
+    await assert.rejects(tour(["Chicago, Illinois", "Austin, Texas"], budget), (e: Error & { status?: number }) => e.status === 503 && /Try fewer cities/.test(e.message));
+  } finally {
+    m.restore();
+  }
+  // The calls run out after the first city's rooms, in the second round: the first stands, the second is not reached.
+  budget = new Budget(48);
+  m = mockFetch((c) => {
+    if (insights(c, "urn:entity:place") && /chicago/i.test(c.params.get("filter.location.query") ?? "")) budget.max = budget.used;
+    return standardQloo()(c);
+  });
+  try {
     const r = await tour(["Chicago, Illinois", "Austin, Texas"], budget);
     assert.deepEqual(r.cities.map((x) => x.input), ["Chicago, Illinois"]);
+    assert.deepEqual(r.notReached, ["Austin, Texas"]);
     assert.equal(r.degraded, true);
   } finally {
     m.restore();
@@ -353,6 +366,41 @@ test("what a tour says and counts is said of the cities it kept; errors that are
   }
 });
 
+test("cities Qloo reads as one place are each scored by their own circle (pass 62)", async () => {
+  // Live: Saint-Jérôme, Saint-Eustache and Saint-Jean-sur-Richelieu were all Qloo's Saint-Laurent, 17 to 41 km off, and
+  // took its 0.996. Here Qloo reads both cities as one place at Austin's centre, with a score by that name.
+  const shared = { name: "Shared Place", disambiguation: "Shared Place, Somewhere", location: { lat: 30.267, lon: -97.743 } };
+  const m = mockFetch((c) => {
+    if (insights(c, "urn:entity:artist") && c.params.get("signal.location.query"))
+      return { body: { results: { entities: [{ ...artist(10, "Wednesday", 0.955, ["Indie"], 0.9), query: { affinity: 0.996 } }] }, query: { localities: { signal: shared } } } };
+    if (insights(c, "urn:entity:artist") && c.params.get("signal.location"))
+      return { body: { results: { entities: [{ ...artist(10, "Wednesday", 0.955, ["Indie"], 0.9), query: { affinity: 0.81 } }] } } };
+    return standardQloo()(c);
+  });
+  try {
+    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Chicago, Illinois", "Austin, Texas"] });
+    assert.deepEqual(r.cities.map((x) => x.affinity), [0.81, 0.81], "neither takes the shared reading's 0.996");
+    assert.ok(r.trace.some((t) => t.detail.startsWith('Qloo read "Austin, Texas" as Shared Place, Somewhere, 0 km away, as it read "Chicago, Illinois"; asked again for')), JSON.stringify(r.trace.map((t) => t.detail)));
+  } finally {
+    m.restore();
+  }
+  // Cities not reached in either round are named in the order typed: Chicago refused, Austin's rooms out of calls in the
+  // second round, Boise's lookup in the first.
+  const budget = new Budget(48);
+  const m2 = mockFetch((c) => {
+    if (insights(c, "urn:entity:artist") && /chicago/i.test(c.params.get("signal.location.query") ?? "")) return { status: 400, body: { errors: [{ message: "Inferences could not be found for the specified location." }] } };
+    if (insights(c, "urn:entity:artist") && /austin/i.test(c.params.get("signal.location.query") ?? "")) budget.max = budget.used;
+    return standardQloo()(c);
+  });
+  try {
+    const r = await forArtist(ENV(memoryKV().kv) as any, budget, { artist: { name: "Wednesday" }, cities: ["Chicago, Illinois", "Austin, Texas", "Boise, Idaho"] });
+    assert.deepEqual(r.cities.map((x) => [x.input, !!x.refused]), [["Chicago, Illinois", true]]);
+    assert.deepEqual(r.notReached, ["Austin, Texas", "Boise, Idaho"]);
+  } finally {
+    m2.restore();
+  }
+});
+
 test("two acts joined by & or and in a list are both used when each is an exact match", async () => {
   const art = (id: string, name: string) => ({ id, name, types: ["urn:entity:artist"] });
   const db: Record<string, any[]> = {
@@ -408,7 +456,7 @@ test("the same city typed twice is scored once, and the trace says so", async ()
   try {
     const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Chicago, Illinois", "chicago, illinois", "Austin, Texas"] });
     assert.deepEqual(r.cities.map((c) => c.input).sort(), ["Austin, Texas", "Chicago, Illinois"]);
-    assert.ok(r.trace.some((t) => t.detail.includes('"chicago, illinois" is the same city as "Chicago, Illinois"')));
+    assert.ok(r.trace.some((t) => t.detail.includes('"chicago, illinois" is within 2 km of "Chicago, Illinois"')));
   } finally {
     m.restore();
   }
