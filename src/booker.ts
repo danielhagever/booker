@@ -459,16 +459,12 @@ export async function forArtist(
   // Every city is placed and asked for by its name first, so a reading two of them share shows before any is scored
   // (pass 62: Saint-Jérôme, Saint-Eustache and Saint-Jean-sur-Richelieu were all Qloo's Saint-Laurent, a Montreal borough
   // 17 to 41 km off, and took its score). Qloo's answer for a city it refuses (a 400) is kept to be said below.
+  // Every city is read before any is scored, whatever that leaves for the second round: holding cities back to save calls
+  // hid the one that shared a misreading (pass 64: Saint-Jérôme took Saint-Laurent's 0.996 again) and dropped cities a
+  // tour had calls for. A tour several calls short of its need can end with fewer cities scored than one loop did (seed 63
+  // at 34 units: none, against 4); it says which, isn't kept, and a retry finds its city lookups cached.
   const placed: { text: string; c: Place; r?: Awaited<ReturnType<Qloo["artists"]>>; error?: QlooError }[] = [];
-  // A city placed is scored in the second round with up to 3 more calls (its circle's score and rooms, or its rooms by
-  // name): the first round stops placing while that would leave the cities already placed short (pass 63: at 34 units,
-  // a 5-city tour the single loop scored 4 cities of ended in "Try fewer cities").
-  const SCORE_CALLS = 3;
   for (const [i, text] of input.cities.entries()) {
-    if (budget.left() < SCORE_CALLS * (placed.length + 1) + 2) {
-      notReached.push(...input.cities.slice(i));
-      break;
-    }
     let c: Place | null = null;
     try {
       c = await cityCenter(env.CACHE, budget, text);

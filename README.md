@@ -51,7 +51,7 @@ Streaming dashboards say how big an act is. Qloo says whose fans overlap with wh
 | A city's taste for an act | `GET /v2/insights?filter.type=urn:entity:artist&signal.location.query=<city>&filter.results.entities=<act>` | Rank the cities on a route |
 | A city read elsewhere, as a part of it, or with no score by name | the same two with `signal.location=POINT(lon lat)&signal.location.radius=<the city's size, 3-25 km>` and `filter.location=POINT(lon lat)&filter.location.radius=<the same>` | The score and the rooms across the whole city |
 
-A venue search makes about 20 Qloo calls in about 9 seconds; an artist search with four cities about 9 calls. Calls are paced one every 340 ms with one bounded retry after a 429 (Qloo rejects the sixth call within about a second, measured), every external call is counted against Cloudflare's free-plan limit of 50 per request (one tool call per MCP request), results are cached for a day, and each address gets 20 new searches an hour on each of the venue search, the artist search and the MCP tools (answers from the day's cache don't count).
+A venue search makes about 20 Qloo calls in about 9 seconds; an artist search with four cities about 10 to 15 calls. Calls are paced one every 340 ms with one bounded retry after a 429 (Qloo rejects the sixth call within about a second, measured), every external call is counted against Cloudflare's free-plan limit of 50 per request (one tool call per MCP request), results are cached for a day, and each address gets 20 new searches an hour on each of the venue search, the artist search and the MCP tools (answers from the day's cache don't count).
 
 ### What the live API taught us (measured 2026-10-03, scripts in `scripts/`)
 

@@ -101,6 +101,7 @@ test("summaries rank only the cities Qloo scored", () => {
   const both: any = { artist: { name: "Wednesday" }, cities: [{ label: "Asheville, North Carolina", affinity: 0.996, rooms: [] }, lon] };
   assert.equal(tourSummary(both), "Wednesday's crowd is strongest in Asheville (0.996). No city score for London. Best-fit rooms: The Lexington for London.");
   // Cities the request's calls didn't reach are named in the summary, not only in the trace (pass 58).
+  assert.ok(tourSummary({ ...both, notReached: ["Boise"] }).endsWith('Not reached, as this search ran out of Qloo calls: "Boise"; ask again for it.'));
   assert.equal(tourSummary({ ...both, notReached: ["Austin, Texas", "Boise"] }), "Wednesday's crowd is strongest in Asheville (0.996). No city score for London. Best-fit rooms: The Lexington for London. Not reached, as this search ran out of Qloo calls: \"Austin, Texas\" and \"Boise\"; ask again for them.");
   // A room is named with the city it fits, never placed by name (live: Birkenhead's best room is Liverpool's Cavern Club,
   // and Qloo files Gothenburg's rooms as "Göteborgs Stad").

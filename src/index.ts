@@ -27,7 +27,7 @@ const failure = (e: unknown) => {
 };
 
 // Bump whenever the pipeline or the result format changes, so no one gets yesterday's logic.
-const CACHE_VERSION = 128;
+const CACHE_VERSION = 129;
 
 async function sha(s: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -123,7 +123,7 @@ export function tourSummary(r: TourResult): string {
   const rooms = r.cities.filter((x) => x.rooms[0]).slice(0, 3).map((x) => fit(x.rooms[0].name, city(x)));
   // Cities the request's calls didn't reach are named here too, not only in the trace (pass 58).
   // Quoted: typed cities hold commas ("Austin, Texas, Denver, Colorado" reads as four; pass 59).
-  const missed = r.notReached?.length ? ` Not reached, as this search ran out of Qloo calls: ${list(r.notReached.map((x) => `"${x}"`))}; ask again for them.` : "";
+  const missed = r.notReached?.length ? ` Not reached, as this search ran out of Qloo calls: ${list(r.notReached.map((x) => `"${x}"`))}; ask again for ${r.notReached.length === 1 ? "it" : "them"}.` : "";
   return `${head}${rooms.length ? ` Best-fit rooms: ${list(rooms)}.` : ""}${missed}`;
 }
 

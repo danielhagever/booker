@@ -384,33 +384,26 @@ test("cities Qloo reads as one place are each scored by their own circle (pass 6
   } finally {
     m.restore();
   }
-  // The first round stops placing cities while that would leave the ones placed without calls to be scored (pass 63):
-  // with 4 units left after Chicago is read, Austin isn't placed, and Chicago keeps the call for its rooms.
+  // Every city is read before any is scored, even with calls short (pass 64: holding the last city back hid that it shared
+  // Saint-Jérôme's misreading, and Saint-Jérôme took Saint-Laurent's 0.996 again). Chicago and Asheville share a reading;
+  // the calls run short after Austin is read: Chicago is still scored by its circle, and the rest are named.
   const tight = new Budget(48);
+  const sharedAt = { name: "Shared Place", disambiguation: "Shared Place, Somewhere", location: { lat: 41.85, lon: -87.65 } };
   const m3 = mockFetch((c) => {
-    if (insights(c, "urn:entity:artist") && /chicago/i.test(c.params.get("signal.location.query") ?? "")) tight.max = tight.used + 4;
+    const q = c.params.get("signal.location.query") ?? "";
+    if (insights(c, "urn:entity:artist") && /chicago|asheville/i.test(q))
+      return { body: { results: { entities: [{ ...artist(10, "Wednesday", 0.955, ["Indie"], 0.9), query: { affinity: 0.996 } }] }, query: { localities: { signal: sharedAt } } } };
+    if (insights(c, "urn:entity:artist") && /austin/i.test(q)) tight.max = tight.used + 6;
+    if (insights(c, "urn:entity:artist") && c.params.get("signal.location"))
+      return { body: { results: { entities: [{ ...artist(10, "Wednesday", 0.955, ["Indie"], 0.9), query: { affinity: 0.81 } }] } } };
     return standardQloo()(c);
   });
   try {
-    const r = await forArtist(ENV(memoryKV().kv) as any, tight, { artist: { name: "Wednesday" }, cities: ["Chicago, Illinois", "Austin, Texas"] });
-    assert.deepEqual(r.cities.map((x) => x.input), ["Chicago, Illinois"]);
-    assert.ok(r.cities[0].rooms.length > 0);
-    assert.deepEqual(r.notReached, ["Austin, Texas"]);
+    const r = await forArtist(ENV(memoryKV().kv) as any, tight, { artist: { name: "Wednesday" }, cities: ["Chicago, Illinois", "Austin, Texas", "Asheville, North Carolina"] });
+    assert.deepEqual(r.cities.map((x) => [x.input, x.affinity]), [["Chicago, Illinois", 0.81]]);
+    assert.deepEqual(r.notReached, ["Austin, Texas", "Asheville, North Carolina"]);
   } finally {
     m3.restore();
-  }
-  // The reserve grows with the cities placed: with 5 units left after Austin is read, Asheville waits, and both are scored.
-  const tight2 = new Budget(48);
-  const m4 = mockFetch((c) => {
-    if (insights(c, "urn:entity:artist") && /austin/i.test(c.params.get("signal.location.query") ?? "")) tight2.max = tight2.used + 5;
-    return standardQloo()(c);
-  });
-  try {
-    const r = await forArtist(ENV(memoryKV().kv) as any, tight2, { artist: { name: "Wednesday" }, cities: ["Chicago, Illinois", "Austin, Texas", "Asheville, North Carolina"] });
-    assert.deepEqual(r.cities.map((x) => x.input).sort(), ["Austin, Texas", "Chicago, Illinois"]);
-    assert.deepEqual(r.notReached, ["Asheville, North Carolina"]);
-  } finally {
-    m4.restore();
   }
   // One name at two places 11 km apart is two readings: Chicago keeps its score by name (Austin's reading, 1,600 km off,
   // is misread by its distance alone).
@@ -440,6 +433,18 @@ test("cities Qloo reads as one place are each scored by their own circle (pass 6
     assert.ok(r.trace.some((t) => t.detail === '"Near Chicago" is within 2 km of "Chicago, Illinois"; it\'s scored once'), JSON.stringify(r.trace.map((t) => t.detail)));
   } finally {
     m6.restore();
+  }
+  // Two places 3.3 km apart are two cities.
+  const m7 = mockFetch((c) =>
+    c.host === "geocoding-api.open-meteo.com" && /^farther chicago$/i.test(c.params.get("name") ?? "")
+      ? { body: { results: [{ id: 10, name: "Farther Chicago", latitude: 41.88, longitude: -87.65, country_code: "US", admin1: "Illinois", country: "United States", population: 50000 }] } }
+      : standardQloo()(c),
+  );
+  try {
+    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Chicago, Illinois", "Farther Chicago"] });
+    assert.deepEqual(r.cities.map((x) => x.input).sort(), ["Chicago, Illinois", "Farther Chicago"]);
+  } finally {
+    m7.restore();
   }
   // Cities not reached in either round are named in the order typed: Chicago refused, Austin's rooms out of calls in the
   // second round, Boise's lookup in the first.
