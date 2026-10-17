@@ -460,7 +460,15 @@ export async function forArtist(
   // (pass 62: Saint-Jérôme, Saint-Eustache and Saint-Jean-sur-Richelieu were all Qloo's Saint-Laurent, a Montreal borough
   // 17 to 41 km off, and took its score). Qloo's answer for a city it refuses (a 400) is kept to be said below.
   const placed: { text: string; c: Place; r?: Awaited<ReturnType<Qloo["artists"]>>; error?: QlooError }[] = [];
+  // A city placed is scored in the second round with up to 3 more calls (its circle's score and rooms, or its rooms by
+  // name): the first round stops placing while that would leave the cities already placed short (pass 63: at 34 units,
+  // a 5-city tour the single loop scored 4 cities of ended in "Try fewer cities").
+  const SCORE_CALLS = 3;
   for (const [i, text] of input.cities.entries()) {
+    if (budget.left() < SCORE_CALLS * (placed.length + 1) + 2) {
+      notReached.push(...input.cities.slice(i));
+      break;
+    }
     let c: Place | null = null;
     try {
       c = await cityCenter(env.CACHE, budget, text);
@@ -488,7 +496,9 @@ export async function forArtist(
       placed.push({ text, c, error: e });
     }
   }
-  // Two or more cities Qloo reads as one place are each misread (no correct reading shared one in 120 recorded cities).
+  // Two or more cities Qloo reads as one place are each asked by their circle: one of them may be read right (pass 63:
+  // Saint-Nazaire's reading is its own, shared by Saint-Herblain and Saint-Brevin), but which one only names could tell,
+  // and the circle sits on each city itself (0.9923 for Saint-Nazaire, against 0.9984 by its name).
   const readAs = (l?: { name: string; lat: number; lon: number }) => (l ? `${l.name}|${l.lat.toFixed(3)},${l.lon.toFixed(3)}` : "");
   const sharers = (x: (typeof placed)[number]) => placed.filter((y) => y !== x && !!y.r?.locality && readAs(y.r.locality) === readAs(x.r?.locality));
   for (const [i, item] of placed.entries()) {
@@ -626,14 +636,14 @@ export async function forArtist(
     calls: q.calls,
     ours: [
       "Cities are ordered by Qloo's affinity for the act there; a city Qloo has no score for comes last.",
-      "A city Qloo reads as somewhere else (over 50 km away), as only a part of it, or as something named after it with no score, is scored and searched in a circle around the city's centre sized by its population (3 to 25 km); a city read as itself with no score keeps Qloo's rooms and takes the circle's score (measured on 26 city-act pairs: within 0.025 of the name's score where both answer, 0.006 lower on average; a small city next to a big one can be scored higher by its neighbour).",
+      "A city Qloo reads as somewhere else (over 50 km away), as only a part of it, as the same place as another city in the tour, or as something named after it with no score, is scored and searched in a circle around the city's centre sized by its population (3 to 25 km); a city read as itself with no score keeps Qloo's rooms and takes the circle's score (measured on 26 city-act pairs: within 0.025 of the name's score where both answer, 0.006 lower on average; a small city next to a big one can be scored higher by its neighbour).",
       "A circle measures the area around the city: a city next to a bigger one shares its taste and its rooms (each room shows its address, and the trace names the cities they are filed in). Only the country acts: a room in another country is never kept, and a circle mostly abroad gives no score.",
     ],
     limits: [
       "Qloo measures taste, not capacity, fees or availability: check that a room's size fits before you pitch it.",
       "Rooms are the places Qloo tags as live music venues or concert halls, in Qloo's order; a place mainly used as a museum, gallery, flea market, film studio or housing (its first categories or its name say so), or a closed one (Qloo says so, or its name: \"CLOSED - ...\"), is left out. Each room shows its main categories: some are classical halls or arenas, so check that a room books your kind of show.",
       "A city's score compares the act with everything that city likes; it is a relative signal, not a ticket forecast.",
-      "Qloo can read a city as a nearby place under 50 km away (Saint-Jérôme as Montreal's Saint-Laurent): alone, the city then takes that place's score; in a tour, cities Qloo reads as one place are each scored by a circle around their centre.",
+      "Qloo can read a city as a nearby place under 50 km away (Saint-Jérôme as Montreal's Saint-Laurent): the city then takes that place's score, unless another city in the tour is read as the same place; then each is scored by a circle around its own centre, even one Qloo read right.",
     ],
     degraded: notReached.length > 0, // the cities not reached may fit next time (the city lookups are cached)
     computedAt: Date.now(),

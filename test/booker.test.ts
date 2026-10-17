@@ -384,6 +384,63 @@ test("cities Qloo reads as one place are each scored by their own circle (pass 6
   } finally {
     m.restore();
   }
+  // The first round stops placing cities while that would leave the ones placed without calls to be scored (pass 63):
+  // with 4 units left after Chicago is read, Austin isn't placed, and Chicago keeps the call for its rooms.
+  const tight = new Budget(48);
+  const m3 = mockFetch((c) => {
+    if (insights(c, "urn:entity:artist") && /chicago/i.test(c.params.get("signal.location.query") ?? "")) tight.max = tight.used + 4;
+    return standardQloo()(c);
+  });
+  try {
+    const r = await forArtist(ENV(memoryKV().kv) as any, tight, { artist: { name: "Wednesday" }, cities: ["Chicago, Illinois", "Austin, Texas"] });
+    assert.deepEqual(r.cities.map((x) => x.input), ["Chicago, Illinois"]);
+    assert.ok(r.cities[0].rooms.length > 0);
+    assert.deepEqual(r.notReached, ["Austin, Texas"]);
+  } finally {
+    m3.restore();
+  }
+  // The reserve grows with the cities placed: with 5 units left after Austin is read, Asheville waits, and both are scored.
+  const tight2 = new Budget(48);
+  const m4 = mockFetch((c) => {
+    if (insights(c, "urn:entity:artist") && /austin/i.test(c.params.get("signal.location.query") ?? "")) tight2.max = tight2.used + 5;
+    return standardQloo()(c);
+  });
+  try {
+    const r = await forArtist(ENV(memoryKV().kv) as any, tight2, { artist: { name: "Wednesday" }, cities: ["Chicago, Illinois", "Austin, Texas", "Asheville, North Carolina"] });
+    assert.deepEqual(r.cities.map((x) => x.input).sort(), ["Austin, Texas", "Chicago, Illinois"]);
+    assert.deepEqual(r.notReached, ["Asheville, North Carolina"]);
+  } finally {
+    m4.restore();
+  }
+  // One name at two places 11 km apart is two readings: Chicago keeps its score by name (Austin's reading, 1,600 km off,
+  // is misread by its distance alone).
+  const m5 = mockFetch((c) => {
+    if (insights(c, "urn:entity:artist") && c.params.get("signal.location.query")) {
+      const chicago = /chicago/i.test(c.params.get("signal.location.query") ?? "");
+      const loc = chicago ? { lat: 41.85, lon: -87.65 } : { lat: 41.95, lon: -87.65 };
+      return { body: { results: { entities: [{ ...artist(10, "Wednesday", 0.955, ["Indie"], 0.9), query: { affinity: chicago ? 0.97 : 0.95 } }] }, query: { localities: { signal: { name: "Springfield", disambiguation: "Springfield", location: loc } } } } };
+    }
+    return standardQloo()(c);
+  });
+  try {
+    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Chicago, Illinois", "Austin, Texas"] });
+    assert.equal(r.cities.find((x) => x.input === "Chicago, Illinois")!.affinity, 0.97);
+  } finally {
+    m5.restore();
+  }
+  // Two places 1.3 km apart are scored once, said as such (Gateshead and Newcastle are 1.4 km apart, live).
+  const m6 = mockFetch((c) =>
+    c.host === "geocoding-api.open-meteo.com" && /^near chicago$/i.test(c.params.get("name") ?? "")
+      ? { body: { results: [{ id: 9, name: "Near Chicago", latitude: 41.862, longitude: -87.65, country_code: "US", admin1: "Illinois", country: "United States", population: 50000 }] } }
+      : standardQloo()(c),
+  );
+  try {
+    const r = await forArtist(ENV(memoryKV().kv) as any, new Budget(48), { artist: { name: "Wednesday" }, cities: ["Chicago, Illinois", "Near Chicago"] });
+    assert.deepEqual(r.cities.map((x) => x.input), ["Chicago, Illinois"]);
+    assert.ok(r.trace.some((t) => t.detail === '"Near Chicago" is within 2 km of "Chicago, Illinois"; it\'s scored once'), JSON.stringify(r.trace.map((t) => t.detail)));
+  } finally {
+    m6.restore();
+  }
   // Cities not reached in either round are named in the order typed: Chicago refused, Austin's rooms out of calls in the
   // second round, Boise's lookup in the first.
   const budget = new Budget(48);
