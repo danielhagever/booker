@@ -609,7 +609,7 @@ export async function forArtist(
       })),
     });
   }
-  if (!cities.length && notReached.length) throw new QlooError("This tour needs more Qloo calls than one request allows. Try fewer cities.", 503);
+  if (!cities.length && notReached.length) throw new QlooError("This search ran out of lookups before any city could be scored. Ask again: the cities it looked up are saved, so the next try goes further (or try fewer cities).", 503);
   if (!cities.length) throw new AppError("None of those cities could be placed. Try a city with its state or country, like \"Austin, Texas\".", 400);
   cities.sort((x, y) => (y.affinity ?? -1) - (x.affinity ?? -1));
   // Cities Qloo gave no score are named, not counted as scored (live: "Scored ... in 5 cities" with 3 unscored).
@@ -618,7 +618,7 @@ export async function forArtist(
   trace.push({
     step: "Cities",
     // "No score" rather than "Qloo had no score": a circle's score is held back when most of its rooms are abroad.
-    detail: `${unscored.length === cities.length ? `No score for ${a.name} in ${cities.length === 1 ? "this city" : "these cities"}${aroundCentre ? ` (${cities.length === 1 ? "also" : `${aroundCentre} also`} asked as a circle around the centre)` : ""}` : `Scored ${a.name} in ${n(scored, "city", "cities")}${byCircle === 0 ? " with the city as Qloo's signal" : byCircle === scored ? (scored === 1 ? " by a circle around its centre" : ", each by a circle around its centre") : ` (${scored - byCircle} by the city's name, ${byCircle} by a circle around its centre)`}`}${unscored.length && unscored.length < cities.length ? `; no score for ${unscored.map((x) => `"${x}"`).join(", ")}` : ""}${notFoundCities.length ? `; not placed: ${notFoundCities.map((x) => `"${x}"`).join(", ")}` : ""}${notReached.length ? `; not reached, as this request ran out of Qloo calls: ${notReached.map((x) => `"${x}"`).join(", ")}` : ""}`,
+    detail: `${unscored.length === cities.length ? `No score for ${a.name} in ${cities.length === 1 ? "this city" : "these cities"}${aroundCentre ? ` (${cities.length === 1 ? "also" : `${aroundCentre} also`} asked as a circle around the centre)` : ""}` : `Scored ${a.name} in ${n(scored, "city", "cities")}${byCircle === 0 ? " with the city as Qloo's signal" : byCircle === scored ? (scored === 1 ? " by a circle around its centre" : ", each by a circle around its centre") : ` (${scored - byCircle} by the city's name, ${byCircle} by a circle around its centre)`}`}${unscored.length && unscored.length < cities.length ? `; no score for ${unscored.map((x) => `"${x}"`).join(", ")}` : ""}${notFoundCities.length ? `; not placed: ${notFoundCities.map((x) => `"${x}"`).join(", ")}` : ""}${notReached.length ? `; not reached, as this request ran out of lookups: ${notReached.map((x) => `"${x}"`).join(", ")}` : ""}`,
   });
   trace.push({ step: "Rooms", detail: `Asked Qloo for the live music venues and concert halls in each city whose visitors' taste fits ${a.name}'s fans` });
 

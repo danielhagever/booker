@@ -216,7 +216,7 @@ test("one city Qloo can't score, or the request's calls running out, doesn't sin
     const r = await tour(["Chicago, Illinois", "Austin, Texas"], budget);
     assert.deepEqual(r.cities.map((x) => x.input), ["Chicago, Illinois"]);
     assert.equal(r.degraded, true);
-    assert.ok(r.trace.some((t) => t.step === "Cities" && t.detail.endsWith('; not reached, as this request ran out of Qloo calls: "Austin, Texas"')), JSON.stringify(r.trace.map((t) => t.detail)));
+    assert.ok(r.trace.some((t) => t.step === "Cities" && t.detail.endsWith('; not reached, as this request ran out of lookups: "Austin, Texas"')), JSON.stringify(r.trace.map((t) => t.detail)));
   } finally {
     m.restore();
   }
@@ -227,7 +227,7 @@ test("one city Qloo can't score, or the request's calls running out, doesn't sin
     return standardQloo()(c);
   });
   try {
-    await assert.rejects(tour(["Chicago, Illinois", "Austin, Texas"], budget), (e: Error & { status?: number }) => e.status === 503 && /This tour needs more Qloo calls than one request allows\. Try fewer cities\./.test(e.message));
+    await assert.rejects(tour(["Chicago, Illinois", "Austin, Texas"], budget), (e: Error & { status?: number }) => e.status === 503 && /This search ran out of lookups before any city could be scored\. Ask again/.test(e.message));
   } finally {
     m.restore();
   }
@@ -239,7 +239,7 @@ test("one city Qloo can't score, or the request's calls running out, doesn't sin
     return standardQloo()(c);
   });
   try {
-    await assert.rejects(tour(["Chicago, Illinois", "Austin, Texas"], budget), (e: Error & { status?: number }) => e.status === 503 && /Try fewer cities/.test(e.message));
+    await assert.rejects(tour(["Chicago, Illinois", "Austin, Texas"], budget), (e: Error & { status?: number }) => e.status === 503 && /ran out of lookups before any city could be scored\. Ask again/.test(e.message));
   } finally {
     m.restore();
   }
@@ -299,7 +299,7 @@ test("what a tour says and counts is said of the cities it kept; errors that are
   try {
     const r = await tour(["Chicago, Illinois", "Austin, Texas"], budget);
     assert.deepEqual(r.notReached, ["Austin, Texas"]);
-    assert.ok(r.trace.some((t) => t.step === "Cities" && t.detail === 'Scored Wednesday in 1 city with the city as Qloo\'s signal; not reached, as this request ran out of Qloo calls: "Austin, Texas"'), JSON.stringify(r.trace.map((t) => t.detail)));
+    assert.ok(r.trace.some((t) => t.step === "Cities" && t.detail === 'Scored Wednesday in 1 city with the city as Qloo\'s signal; not reached, as this request ran out of lookups: "Austin, Texas"'), JSON.stringify(r.trace.map((t) => t.detail)));
     assert.ok(!r.trace.some((t) => /around the city centre instead/.test(t.detail)));
   } finally {
     m.restore();
@@ -360,7 +360,7 @@ test("what a tour says and counts is said of the cities it kept; errors that are
     return standardQloo()(c);
   });
   try {
-    await assert.rejects(tour(["Chicago, Illinois", "Austin, Texas"], budget), (e: Error & { status?: number }) => e.status === 503 && /Try fewer cities/.test(e.message));
+    await assert.rejects(tour(["Chicago, Illinois", "Austin, Texas"], budget), (e: Error & { status?: number }) => e.status === 503 && /ran out of lookups before any city could be scored\. Ask again/.test(e.message));
   } finally {
     m.restore();
   }

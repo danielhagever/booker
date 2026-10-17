@@ -27,7 +27,7 @@ const failure = (e: unknown) => {
 };
 
 // Bump whenever the pipeline or the result format changes, so no one gets yesterday's logic.
-const CACHE_VERSION = 129;
+const CACHE_VERSION = 130;
 
 async function sha(s: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -123,7 +123,7 @@ export function tourSummary(r: TourResult): string {
   const rooms = r.cities.filter((x) => x.rooms[0]).slice(0, 3).map((x) => fit(x.rooms[0].name, city(x)));
   // Cities the request's calls didn't reach are named here too, not only in the trace (pass 58).
   // Quoted: typed cities hold commas ("Austin, Texas, Denver, Colorado" reads as four; pass 59).
-  const missed = r.notReached?.length ? ` Not reached, as this search ran out of Qloo calls: ${list(r.notReached.map((x) => `"${x}"`))}; ask again for ${r.notReached.length === 1 ? "it" : "them"}.` : "";
+  const missed = r.notReached?.length ? ` Not reached, as this search ran out of lookups: ${list(r.notReached.map((x) => `"${x}"`))}; ask again for ${r.notReached.length === 1 ? "it" : "them"}.` : "";
   return `${head}${rooms.length ? ` Best-fit rooms: ${list(rooms)}.` : ""}${missed}`;
 }
 
@@ -139,8 +139,8 @@ export function caveats(r: { acts?: VenueResult["acts"]; venue?: VenueResult["ve
   const lost = (r.inbox ?? []).filter((p) => !p.id).map((p) => p.input);
   if (lost.length) parts.push(`Pitches not found in Qloo: ${lost.join(", ")}.`);
   for (const c of r.cities ?? []) if (c.note) parts.push(c.note);
-  if (r.notFound?.length) parts.push(`Cities left out (not found, or Qloo couldn't place them): ${r.notFound.join("; ")}.`);
-  if (r.notReached?.length) parts.push(`Cities not reached, as this request ran out of Qloo calls (this answer isn't saved; ask again, or with fewer cities): ${r.notReached.join("; ")}.`);
+  if (r.notFound?.length) parts.push(`${r.notFound.length === 1 ? "City" : "Cities"} left out (not found, or Qloo couldn't place them): ${r.notFound.join("; ")}.`);
+  if (r.notReached?.length) parts.push(`${r.notReached.length === 1 ? "City" : "Cities"} not reached, as this request ran out of lookups (this answer isn't saved; ask again, or with fewer cities): ${r.notReached.join("; ")}.`);
   return parts.join(" ");
 }
 
